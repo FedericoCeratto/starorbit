@@ -247,6 +247,7 @@ class Satellite(Sprite):
         self.mass = .001
         self.add([into])
         self._load_raw_image('art/sun.png', .2)
+        self.orbit = ()
 
     def update(self):
         """Move satellite"""
@@ -275,15 +276,17 @@ class Satellite(Sprite):
     def _predict_orbit(self, center, steps=500):
         """Predict object orbit"""
         step = 1
-        gspeed = self.gspeed * game.speed
+        #gspeed = self.gspeed * game.speed
+        gspeed = self.gspeed * 1
         positions = []
         for x in xrange(steps):
             gspeed += self._calculate_acceleration(center, self.mass, step=step)
             if gspeed.modulo > 2: # unreliable prediction
-                return positions
+                self.orbit = positions
+                return
             center += gspeed * step
             positions.append((center, gspeed))
-        return positions
+        self.orbit = positions
 
 
 
@@ -316,6 +319,7 @@ class Starship(Satellite):
         self.add([into])
         self.thrust = GVector(0, 0)
         self._orbit_prediction_thread = None
+        self.orbit = ()
 
     def update(self):
         """Plot orbit, move ship"""
@@ -340,8 +344,8 @@ class Starship(Satellite):
             if not self._orbit_prediction_thread.is_alive():
                 # thread just terminated
                 self._orbit_prediction_thread = None
-            # plot new orbit
-            game.orbit.plot_orbit(self._cached_orbit)
+                # plot new orbit
+                game.orbit.plot_orbit(self.orbit)
 
         self.gspeed += self._calculate_acceleration(self.gcenter, self.mass)
         self.gcenter += self.gspeed * game.speed
