@@ -3,6 +3,7 @@ from pygame import gfxdraw
 from pygame.locals import *
 import pygame
 import random, math, sys
+from threading import Thread
 
 game = None
 SAT_L=0
@@ -192,7 +193,7 @@ class Sprite(pygame.sprite.DirtySprite):
         self.rect = pygame.Rect((0, 0), (0, 0))
 
     def _recenter(self):
-        """Update sprite screen-center"""
+        """Update sprite rect based on screen offset"""
         rgcenter = self.gcenter - game.goffset
         pcenter = rgcenter.pvector + game.pscreen_center
         self.rect.center = pcenter.tup
@@ -210,8 +211,8 @@ class Orbits(Sprite):
         self.dirty = 1 
         self._raw_image = pygame.Surface(game.resolution, pygame.SRCALPHA)
         self._raw_size = GVector(game.resolution)
-        self.gcenter = GVector(game.resolution) / 2
-        self.rect = pygame.Rect((0, 0), (10, 10))
+        self.gcenter = GVector(0, 0)
+        self.rect = pygame.Rect((0, 0), (0, 0))
         self.add([into])
 
     def plot_orbit(self, orbit):
@@ -220,11 +221,17 @@ class Orbits(Sprite):
         color = (0, 0, 255, 200)
         self.dirty = 1
 
+        #white = (255, ) * 4
+        #sx, sy = self._raw_image.get_size()
+        #pygame.draw.line(self._raw_image, white, (0,0), (0, sy))
+        #pygame.draw.line(self._raw_image, white, (0,0), (sx, 0))
+
         for p, v in orbit:
-            w = min(254, int(v.modulo * 155))
+            w = min(254, int(v.modulo * 128))
             self._raw_image.set_at((int(p.x), int(p.y)), (w, w, 255, 250))
 
         self._scale()
+        self._recenter()
 
 
 class Satellite(Sprite):
@@ -265,14 +272,15 @@ class Satellite(Sprite):
 
         return acceleration_v
 
-    def _predict_orbit(self, steps=500):
+    def _predict_orbit(self, center, steps=500):
         """Predict object orbit"""
-        step = 3
-        center = self.gcenter
+        step = 1
         gspeed = self.gspeed * game.speed
         positions = []
         for x in xrange(steps):
             gspeed += self._calculate_acceleration(center, self.mass, step=step)
+            if gspeed.modulo > 2: # unreliable prediction
+                return positions
             center += gspeed * step
             positions.append((center, gspeed))
         return positions
@@ -307,6 +315,7 @@ class Starship(Satellite):
         self.mass = 4
         self.add([into])
         self.thrust = GVector(0, 0)
+        self._orbit_prediction_thread = None
 
     def update(self):
         """Plot orbit, move ship"""
@@ -315,9 +324,23 @@ class Starship(Satellite):
 
         if self.thrust:
             self.gspeed += self.thrust
+
         if self.thrust or game.changed_scale:
-            self._cached_orbit = self._predict_orbit()
+            # fire off a thread to perform prediction
+            self._orbit_prediction_thread = Thread(
+                target=self._predict_orbit,
+                args=(self.gcenter, )
+            )
+            self._orbit_prediction_thread.start()
             self.thrust = None
+            # blank out old orbit
+            game.orbit.plot_orbit(())
+
+        if self._orbit_prediction_thread:
+            if not self._orbit_prediction_thread.is_alive():
+                # thread just terminated
+                self._orbit_prediction_thread = None
+            # plot new orbit
             game.orbit.plot_orbit(self._cached_orbit)
 
         self.gspeed += self._calculate_acceleration(self.gcenter, self.mass)
@@ -375,7 +398,8 @@ class Game(object):
     def _create_space_objects(self):
         self.orbit = Orbits(self.stack)
         sun = Sun(into=self.stack)
-        Sun(gcenter=GVector(500, 400), into=self.stack)
+        Sun(gcenter=GVector(700, 600), into=self.stack)
+        Sun(gcenter=GVector(500, 100), into=self.stack)
         for x in xrange(8):
             sat = Satellite(self.stack)
             sp = sun.gcenter - sat.gcenter
@@ -383,15 +407,15 @@ class Game(object):
         self._ship = Starship(into=self.stack)
 
     def _zoom_in(self):
-        if self._zoom_level < .2:
+        if self._zoom_level < .5:
             return
-        self._zoom_level -= .2
+        self._zoom_level -= .5
         self.changed_scale = True
         # I have no idea what i'm doing
         self.zoom = 4 * math.atan(1/self._zoom_level)
 
     def _zoom_out(self):
-        self._zoom_level += .2
+        self._zoom_level += .5
         self.changed_scale = True
         self.zoom = 4 * math.atan(1/self._zoom_level)
 
