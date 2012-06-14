@@ -1,7 +1,11 @@
-import pygame
+from optparse import OptionParser
 from pygame import gfxdraw
 from pygame.locals import *
+import pygame
 import random, math, sys
+
+game = None
+SAT_L=0
 
 class Point(object):
 
@@ -156,13 +160,13 @@ class GVector(Point):
         """The Point/Vector behaves as a tuple, mostly for interacting with pygame.
         Return integers measured in pixels
         """
-        return int(self.tup[i] * 1) # FIXME: Grid size
+        return int(self.tup[i] * game.zoom)
 
     @property
     def in_pixels(self):
         """Equivalent vector measured in pixes"""
-        return PVector(Grid_To_Scr(self.tup))
-
+        scaled = self * game.zoom
+        return PVector(scaled.tup)
 
 
 def distance(a, b):
@@ -171,46 +175,79 @@ def distance(a, b):
     return d ** (.5)
 
 
-pygame.init()
-game = None
 
 class Sprite(pygame.sprite.DirtySprite):
     def __init__(self, into):
         self.add([into])
+
+    def _load_raw_image(self, fname, scale):
+        """Load raw sprite image"""
+        img = pygame.image.load(fname)
+        self._raw_image = img.convert_alpha()
+        self._raw_size = GVector(img.get_size()) * scale
+
+    def _scale(self):
+        """Scale raw image into .image attribute, based on game zoom"""
+        self.image = pygame.transform.smoothscale(self._raw_image, self._raw_size)
+        self.rect = pygame.Rect((0, 0), (0, 0))
+
+    def _recenter(self):
+        """Update sprite screen-center"""
+        rgcenter = self.gcenter - game.goffset
+        pcenter = rgcenter.pvector + game.pscreen_center
+        self.rect.center = pcenter.tup
+
+    def update(self):
+        if game.changed_scale:
+            self._scale()
+        self._recenter()
+        self.dirty = 1
 
 class Orbits(Sprite):
     def __init__(self, into):
         pygame.sprite.DirtySprite.__init__(self)
         self.layer = 1
         self.dirty = 1 
-        self.image = pygame.Surface(RES, pygame.SRCALPHA)
+        self._raw_image = pygame.Surface(game.resolution, pygame.SRCALPHA)
+        self._raw_size = GVector(game.resolution)
+        self.gcenter = GVector(game.resolution) / 2
         self.rect = pygame.Rect((0, 0), (10, 10))
         self.add([into])
 
-    def update(self):
+    def plot_orbit(self, orbit):
+        """Plot an orbit"""
+        self._raw_image.fill((0, 0, 0, 0))
+        color = (0, 0, 255, 200)
         self.dirty = 1
+
+        for p, v in orbit:
+            w = min(254, int(v.modulo * 155))
+            self._raw_image.set_at((int(p.x), int(p.y)), (w, w, 255, 250))
+
+        self._scale()
+
 
 class Satellite(Sprite):
     def __init__(self, into):
         pygame.sprite.DirtySprite.__init__(self)
         self.layer = 1
         self.dirty = 1 
-        self.image = pygame.image.load('/usr/share/games/uqm/content/ipanims/ip_sun.2.png')
         x = random.randint(10, 790)
         y = random.randint(10, 590)
         self.gcenter = GVector(x, y)
         self.gspeed = GVector(.5, 0)
         self.rect = pygame.Rect(self.gcenter.tup, (10, 10))
         self.mass = .001
-        self.radius = math.sqrt(self.mass)
         self.add([into])
+        self._load_raw_image('art/sun.png', .2)
 
     def update(self):
         """Move satellite"""
+        if game.changed_scale:
+            self._scale()
         self.gspeed += self._calculate_acceleration(self.gcenter, self.mass)
         self.gcenter += self.gspeed * game.speed
-        self.rect.topleft = self.gcenter.tup
-        #self._predict_orbit()
+        self._recenter()
         self.dirty = 1
 
     def _get_suns(self):
@@ -240,90 +277,103 @@ class Satellite(Sprite):
             positions.append((center, gspeed))
         return positions
 
-    def _plot_orbit(self, orbit):
-        """Plot orbit on orbits sprite"""
-        surf = game._orbit.image
-        surf.fill((0, 0, 0, 0))
-        color = (0, 0, 255, 200)
-
-        for p, v in orbit:
-            w = min(254, int(v.modulo * 155))
-            surf.set_at((int(p.x), int(p.y)), (w, w, 255, 70))
-
-        #gfxdraw.aapolygon(surf, orbit, color)
-        #pygame.draw.aalines(surf, color, False, orbit, True)
-
-        game._orbit.dirty = 1
 
 
-class Sun(pygame.sprite.DirtySprite):
+class Sun(Sprite):
     def __init__(self, into=None, gcenter=None):
         pygame.sprite.DirtySprite.__init__(self)
         self.layer = 2
         self.dirty = 1
-        self.image = pygame.image.load('/usr/share/games/uqm/content/ipanims/ip_sun.4.png')
-        self.rect = self.image.get_rect()
+        self._load_raw_image('art/sun.png', .5)
         if gcenter:
             self.gcenter = gcenter
         else:
             self.gcenter = GVector(400, 300)
         self.gspeed = GVector(0, 0)
-        self.rect.center = self.gcenter.tup
         self.mass = 4
-        self.radius = math.sqrt(self.mass)
         if into is not None:
             self.add([into])
 
-    def update(self):
-        self.dirty = 1
 
 class Starship(Satellite):
     def __init__(self, into=None):
         pygame.sprite.DirtySprite.__init__(self)
         self.layer = 2
         self.dirty = 1
-        self._raw_image = pygame.image.load('art/ship.png')
+        self._load_raw_image('art/ship.png', .5)
         self.gcenter = GVector(200, 300)
         self.gspeed = GVector(0, -0.3)
         self.thrust = None
-        self.rect = pygame.Rect(self.gcenter.tup, (10, 10))
         self.mass = 4
-        self.radius = math.sqrt(self.mass)
         self.add([into])
         self.thrust = GVector(0, 0)
 
     def update(self):
         """Plot orbit, move ship"""
+        if game.changed_scale:
+            self._scale()
+
         if self.thrust:
             self.gspeed += self.thrust
+        if self.thrust or game.changed_scale:
             self._cached_orbit = self._predict_orbit()
             self.thrust = None
-            self._plot_orbit(self._cached_orbit)
+            game.orbit.plot_orbit(self._cached_orbit)
 
         self.gspeed += self._calculate_acceleration(self.gcenter, self.mass)
         self.gcenter += self.gspeed * game.speed
         angle = self.gspeed.angle / math.pi * 180 + 180
-        self.image = pygame.transform.rotozoom(self._raw_image, angle, .7)
+
+        tmp = pygame.transform.smoothscale(self._raw_image, self._raw_size)
+        self.image = pygame.transform.rotozoom(tmp, angle, .7)
         self.rect = self.image.get_rect()
-        self.rect.center = self.gcenter.tup
+        self._recenter()
         self.dirty = 1
 
 
-SAT_L=0
-RES=(800, 600)
-RES=(1024, 768)
 
 class Game(object):
-    def __init__(self):
+    def __init__(self, fullscreen=False, resolution=None):
+        """Initialize Game"""
+        pygame.init()
+        pygame.display.set_caption('Game')
+        if fullscreen:
+            self._set_fullscreen()
+        else:
+            self._change_resolution(resolution)
         self._clock = pygame.time.Clock()
-        self._display_s = pygame.display.set_mode(RES)
         self.stack = pygame.sprite.LayeredDirty()
-        self._background = pygame.image.load('space_dim.jpg')
-        self._background = pygame.transform.smoothscale(self._background, RES)
         self.speed = 1
         self.propellent = 1500
+        self.zoom = 1
+        self._zoom_level = 3.9
+        self.changed_scale = True
+        self.goffset = GVector(0, 0)
 
-        self._orbit = Orbits(self.stack)
+    def _set_fullscreen(self):
+        """Set fullscreen mode"""
+        surf = self._display_s = pygame.display.set_mode((0, 0),
+            pygame.FULLSCREEN | pygame.HWSURFACE)
+        self.resolution = PVector(surf.get_size())
+        self.pscreen_center = self.resolution / 2
+        self._background = pygame.image.load('space_dim.jpg')
+        self._background = pygame.transform.smoothscale(self._background,
+            self.resolution)
+        self.changed_scale = True
+
+    def _change_resolution(self, resolution):
+        """Change screen resolution"""
+        self.resolution = resolution
+        self.pscreen_center = resolution / 2
+        self._display_s = pygame.display.set_mode(resolution,
+            pygame.RESIZABLE)
+        self._background = pygame.image.load('space_dim.jpg')
+        self._background = pygame.transform.smoothscale(self._background,
+            resolution)
+        self.changed_scale = True
+
+    def _create_space_objects(self):
+        self.orbit = Orbits(self.stack)
         sun = Sun(into=self.stack)
         Sun(gcenter=GVector(500, 400), into=self.stack)
         for x in xrange(8):
@@ -341,35 +391,33 @@ class Game(object):
         # run update on every stack element
         self.stack.update()
 
-        #satellites = self.stack.get_sprites_from_layer(SAT_L)
-
-        for P in []:
-            if P.x > 800-P.radius:   P.x = 800-P.radius;  P.speedx *= -1
-            if P.x < 0+P.radius:     P.x = 0+P.radius;    P.speedx *= -1
-            if P.y > 600-P.radius:   P.y = 600-P.radius;  P.speedy *= -1
-            if P.y < 0+P.radius:     P.y = 0+P.radius;    P.speedy *= -1
-            for P2 in satellites:
-                if P != P2:
-                    Distance = math.sqrt(  ((P.x-P2.x)**2)  +  ((P.y-P2.y)**2)  )
-                    if Distance < (P.radius+P2.radius):
-                        # collision
-                        P.speedx = ((P.mass*P.speedx)+(P2.mass*P2.speedx))/(P.mass+P2.mass)
-                        P.speedy = ((P.mass*P.speedy)+(P2.mass*P2.speedy))/(P.mass+P2.mass)
-                        P.x = ((P.mass*P.x)+(P2.mass*P2.x))/(P.mass+P2.mass)
-                        P.y = ((P.mass*P.y)+(P2.mass*P2.y))/(P.mass+P2.mass)
-                        P.mass += P2.mass
-                        P.radius = math.sqrt(P.mass)
-                        #Particles.remove(P2)
-
         self.stack.draw(self._display_s)
         pygame.display.flip()
 
     def get_input(self):
+        """Process user input"""
+        self.changed_scale = False
         keystate = pygame.key.get_pressed()
         for event in pygame.event.get():
             if event.type == QUIT or keystate[K_ESCAPE]:
                 pygame.quit()
                 sys.exit()
+            elif event.type == MOUSEBUTTONDOWN:
+                # Change zoom
+                if event.button == 4:
+                    if self._zoom_level > .2:
+                        self._zoom_level -= .2
+                        self.changed_scale = True
+                elif event.button == 5:
+                    self._zoom_level += .2
+                    self.changed_scale = True
+
+                if self.changed_scale:
+                    # I have no idea what i'm doing
+                    self.zoom = 4 * math.atan(1/self._zoom_level)
+
+            elif event.type == VIDEORESIZE:
+                self._change_resolution(PVector(event.size))
 
         if pygame.mouse.get_pressed()[2]:
             if self.propellent:
@@ -381,15 +429,34 @@ class Game(object):
 
     def run(self):
         """Game loop"""
+        self._create_space_objects()
+        self.update()
         while True:
             speed = self._clock.tick(60) / 16.0
             self.get_input()
+            k = min(5, self._zoom_level) / 5
+            self.goffset = self._ship.gcenter * (1-k) + GVector(400, 300) * k
             self.update()
 
 
+def parse_args():
+    """Parse CLI args"""
+    parser = OptionParser()
+    parser.add_option("-f", "--fullscreen", dest="fullscreen",
+        action="store_true", help="fullscreen", default=False)
+    parser.add_option("-x", "--x-resolution", dest="resolution",
+        help="resolution", default=None)
+
+    (options, args) = parser.parse_args()
+    rx = options.resolution
+    if rx:
+        options.resolution = PVector(int(rx), int(int(rx)/4.0*3))
+    return options, args
+
 def main():
     global game
-    game = Game()
+    opts, args = parse_args()
+    game = Game(fullscreen=opts.fullscreen, resolution=opts.resolution)
     game.run()
 
 if __name__ == '__main__':
