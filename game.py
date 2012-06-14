@@ -214,8 +214,11 @@ class Orbits(Sprite):
         self.gcenter = GVector(0, 0)
         self.rect = pygame.Rect((0, 0), (0, 0))
         self.add([into])
+        self._alpha = 0
+        self._fading = 'in' # 'in', 'out', None
+        self._orbit = ()
 
-    def plot_orbit(self, orbit):
+    def _plot_orbit(self):
         """Plot an orbit"""
         self._raw_image.fill((0, 0, 0, 0))
         color = (0, 0, 255, 200)
@@ -226,13 +229,43 @@ class Orbits(Sprite):
         #pygame.draw.line(self._raw_image, white, (0,0), (0, sy))
         #pygame.draw.line(self._raw_image, white, (0,0), (sx, 0))
 
-        for p, v in orbit:
+        for p, v in self._orbit:
             w = min(254, int(v.modulo * 128))
-            self._raw_image.set_at((int(p.x), int(p.y)), (w, w, 255, 250))
+            self._raw_image.set_at((int(p.x), int(p.y)), (w, w, 255, self._alpha))
 
         self._scale()
         self._recenter()
+        self.dirty = 1
 
+    def fade_in(self, orbit):
+        """Start fading in a new orbit"""
+        self._orbit = orbit
+        self._fading = 'in'
+
+    def fade_out(self):
+        """Start fading out the orbit"""
+        self._fading = 'out'
+
+    def update(self):
+        if self._fading == 'in':
+            self._alpha += 30
+            if self._alpha > 255:
+                self._alpha = 255
+                self._fading = None
+            self._plot_orbit()
+
+        elif self._fading == 'out':
+            self._alpha -= 30
+            if self._alpha < 0:
+                self._alpha = 0
+                self._fading = None
+            self._plot_orbit()
+
+        if game.changed_scale:
+            self._plot_orbit()
+            self._scale()
+        self._recenter()
+        self.dirty = 1
 
 class Satellite(Sprite):
     def __init__(self, into):
@@ -273,18 +306,17 @@ class Satellite(Sprite):
 
         return acceleration_v
 
-    def _predict_orbit(self, center, steps=500):
+    def _predict_orbit(self, center):
         """Predict object orbit"""
-        step = 1
         #gspeed = self.gspeed * game.speed
         gspeed = self.gspeed * 1
         positions = []
-        for x in xrange(steps):
-            gspeed += self._calculate_acceleration(center, self.mass, step=step)
-            if gspeed.modulo > 2: # unreliable prediction
+        for x in xrange(5000):
+            gspeed += self._calculate_acceleration(center, self.mass)
+            if gspeed.modulo > 2.5: # unreliable prediction
                 self.orbit = positions
                 return
-            center += gspeed * step
+            center += gspeed
             positions.append((center, gspeed))
         self.orbit = positions
 
@@ -311,7 +343,7 @@ class Starship(Satellite):
         pygame.sprite.DirtySprite.__init__(self)
         self.layer = 2
         self.dirty = 1
-        self._load_raw_image('art/ship.png', .5)
+        self._load_raw_image('art/ship.png', .25)
         self.gcenter = GVector(200, 300)
         self.gspeed = GVector(0, -0.3)
         self.thrust = None
@@ -338,14 +370,14 @@ class Starship(Satellite):
             self._orbit_prediction_thread.start()
             self.thrust = None
             # blank out old orbit
-            game.orbit.plot_orbit(())
+            game.orbit.fade_out()
 
         if self._orbit_prediction_thread:
             if not self._orbit_prediction_thread.is_alive():
                 # thread just terminated
                 self._orbit_prediction_thread = None
                 # plot new orbit
-                game.orbit.plot_orbit(self.orbit)
+                game.orbit.fade_in(self.orbit)
 
         self.gspeed += self._calculate_acceleration(self.gcenter, self.mass)
         self.gcenter += self.gspeed * game.speed
