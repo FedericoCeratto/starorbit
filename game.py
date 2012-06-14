@@ -382,6 +382,27 @@ class Game(object):
             sat.gspeed = sp.orthonormal() * .3
         self._ship = Starship(into=self.stack)
 
+    def _zoom_in(self):
+        if self._zoom_level < .2:
+            return
+        self._zoom_level -= .2
+        self.changed_scale = True
+        # I have no idea what i'm doing
+        self.zoom = 4 * math.atan(1/self._zoom_level)
+
+    def _zoom_out(self):
+        self._zoom_level += .2
+        self.changed_scale = True
+        self.zoom = 4 * math.atan(1/self._zoom_level)
+
+    def _impulse(self):
+        """Fire thrusters for one impulse"""
+        if not self.propellent:
+            return
+        mpos = pygame.mouse.get_pos()
+        thrust = self._ship.gcenter - GVector(mpos)
+        self._ship.thrust = thrust.normalized() * .001
+        self.propellent -= 1
 
     def update(self):
 
@@ -397,35 +418,26 @@ class Game(object):
     def get_input(self):
         """Process user input"""
         self.changed_scale = False
-        keystate = pygame.key.get_pressed()
         for event in pygame.event.get():
-            if event.type == QUIT or keystate[K_ESCAPE]:
+            if event.type == QUIT or event.type == KEYDOWN and event.key == 27:
+                # quit on Esc key or window closing
                 pygame.quit()
                 sys.exit()
-            elif event.type == MOUSEBUTTONDOWN:
-                # Change zoom
-                if event.button == 4:
-                    if self._zoom_level > .2:
-                        self._zoom_level -= .2
-                        self.changed_scale = True
-                elif event.button == 5:
-                    self._zoom_level += .2
-                    self.changed_scale = True
-
-                if self.changed_scale:
-                    # I have no idea what i'm doing
-                    self.zoom = 4 * math.atan(1/self._zoom_level)
-
+            elif event.type == KEYDOWN: # key pressed
+                if event.unicode == u'i':
+                    self._impulse()
+            elif event.type == MOUSEBUTTONDOWN: # mouse click
+                if event.button == 4: # wheel up
+                    self._zoom_in()
+                elif event.button == 5: # wheen down
+                    self._zoom_out()
+                #elif event.button == 3: # right click
+                #mouse.get_pressed() allows continuous firing
             elif event.type == VIDEORESIZE:
                 self._change_resolution(PVector(event.size))
 
         if pygame.mouse.get_pressed()[2]:
-            if self.propellent:
-                # fire thrusters
-                mpos = pygame.mouse.get_pos()
-                thrust = self._ship.gcenter - GVector(mpos)
-                self._ship.thrust = thrust.normalized() * .001
-                self.propellent -= 1
+            self._impulse()
 
     def run(self):
         """Game loop"""
