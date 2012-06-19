@@ -98,11 +98,7 @@ class Orbit(object):
         self._alpha = 0
         self._fading = 'in' # 'in', 'out', None
         self._orbit = ()
-        self._color = gloss.Color.smooth_step(
-            gloss.Color.WHITE,
-            gloss.Color.TRANSPARENT_WHITE,
-            0.9
-        )
+        self._color = gloss.Color(1, 1, 1, .2)
 
     def fade_in(self, orbit):
         """Start fading in a new orbit"""
@@ -117,25 +113,17 @@ class Orbit(object):
 
         if self._fading == 'in':
             self._alpha += .01
-            if self._alpha > 1:
-                self._alpha = 1
+            if self._alpha > .2:
+                self._alpha = .2
                 self._fading = None
-            self._color = gloss.Color.smooth_step(
-                gloss.Color.TRANSPARENT_WHITE,
-                gloss.Color.WHITE,
-                self._alpha * .2
-            )
+            self._color = gloss.Color(1, 1, 1, self._alpha)
 
         elif self._fading == 'out':
             self._alpha -= .01
             if self._alpha < 0:
                 self._alpha = 0
                 self._fading = None
-            self._color = gloss.Color.smooth_step(
-                gloss.Color.TRANSPARENT_WHITE,
-                gloss.Color.WHITE,
-                self._alpha * .2
-            )
+            self._color = gloss.Color(1, 1, 1, self._alpha)
 
     def draw(self):
         if not self._orbit:
@@ -357,6 +345,29 @@ class Explosion(PSystem):
         )
 
 
+class Debris(PSystem):
+    def __init__(self, gcenter):
+        texture = pygame.Surface(size=(1,1))
+        texture = gloss.Texture("art/red_dot.png")
+        wind = gcenter - game._suns[0].gcenter
+        wind.modulo = 100
+        self._ps = gloss.ParticleSystem(
+            texture,
+            onfinish = self._finished,
+            position = gcenter.on_screen.tup,
+            name = "fire",
+            initialparticles = 1,
+            particlelifespan = 275,
+            wind = map(int, wind.tup),
+            minspeed = 10,
+            maxspeed = 20,
+            minscale = game.zoom * .1,
+            maxscale = game.zoom * .1,
+            startcolor = Color(1, 0, 0, 1),
+            endcolor = Color(1, 1, 0, 0),
+        )
+
+
 class Thruster(PSystem):
     def __init__(self, gcenter, gdir):
         self.gcenter = gcenter
@@ -398,11 +409,7 @@ class HBar(Bar):
         self._stopleft = PVector(res.x * pos_f, res.y - 10)
         self._value_max = float(vmax)
         self._value = 1
-        self._color = gloss.Color.smooth_step(
-            color,
-            gloss.Color.TRANSPARENT_WHITE,
-            0.4
-        )
+        self._color = gloss.Color(0, 0, 0, 0)
 
     def draw(self):
         gloss.Gloss.draw_box(
@@ -544,6 +551,12 @@ class Game(gloss.GlossGame):
             HBar(self._ship, 'temperature', .40, gloss.Color.RED, vmax=1500),
         ]
 
+    def _add_solar_debris(self):
+        """Add debris caused by sun"""
+        if Gloss.tick_count % 10 != 0:
+            return
+        gc = self._ship.gcenter + self._ship.gspeed * (random.random() - 1) * 3 
+        self._particles.append(Debris(gc))
 
     def draw(self):
         """Main game loop: update game objects, handle zoom and pan, finally
@@ -554,6 +567,7 @@ class Game(gloss.GlossGame):
         k = min(1, self.zoom / 10)
         self.gcamera = self._ship.gcenter * k + self._suns[0].gcenter * (1 - k)
 
+        self._add_solar_debris()
         self.changed_scale = True
         stack = self._suns + self._satellites + self._particles + \
             [self.orbit] + self._circles + [self._ship] + self._bars
