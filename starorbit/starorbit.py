@@ -486,35 +486,6 @@ class Game(gloss.GlossGame):
 
         raise RuntimeError, "Unable to kill %s" % repr(victim)
 
-    def _update(self):
-
-        # clear out existing sprites
-        self.stack.clear(self._display_s, self._background)
-
-        # run update on every stack element
-        self.stack.update()
-
-        self.stack.draw(self._display_s)
-        pygame.display.flip()
-
-    def get_input(self):
-        """Process user input"""
-        self.changed_scale = False
-        for event in pygame.event.get():
-            if event.type == QUIT or event.type == KEYDOWN and event.key == 27:
-                # quit on Esc key or window closing
-                pygame.quit()
-                sys.exit()
-            elif event.type == KEYDOWN: # key pressed
-                if event.unicode == u'i':
-                    self._impulse()
-            elif event.type == VIDEORESIZE:
-                self._change_resolution(PVector(event.size))
-
-        if pygame.mouse.get_pressed()[2]:
-            self._impulse()
-
-
     def _mouse_click(self, event):
         self.changed_scale = False
         if event.button == 4: # wheel up
