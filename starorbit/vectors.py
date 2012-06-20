@@ -143,3 +143,7 @@ class PVector(Vector):
     """2D vector, measured in pixels"""
     def __repr__(self):
         return "PVector {%.3f, %.3f}" % (self.x, self.y)
+
+    @property
+    def round_tup(self):
+        return (int(self.x), int(self.y))

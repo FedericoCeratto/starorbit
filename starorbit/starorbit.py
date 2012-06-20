@@ -71,15 +71,17 @@ def distance(a, b):
 
 
 class Sprite(gloss.Sprite):
-    def __init__(self, fname):
+    def __init__(self, fname, raw_scale):
         gloss.Sprite.__init__(self, gloss.Texture(fname))
-        self._raw_scale = 1
+        self._raw_scale = raw_scale
         self._raw_rotation = 0.0
+        self._phalfsize = PVector(self.texture.half_width,
+            self.texture.half_height) * raw_scale
 
     def _recenter(self):
-        """Update sprite rect based on screen offset"""
-        self.pcenter = self.gcenter.on_screen
-        self.move_to(int(self.pcenter.x), int(self.pcenter.y))
+        """Update sprite rect based on screen offset and image size"""
+        ptopleft = self.gcenter.on_screen - self._phalfsize * .01
+        self.move_to(*ptopleft.round_tup)
 
     def update(self):
         pass
@@ -88,6 +90,8 @@ class Sprite(gloss.Sprite):
         """Draw on screen"""
         self._recenter()
         angle = getattr(self, '_angle', 0.0)
+        ptopleft = self.gcenter.on_screen - self._phalfsize * game.zoom
+        self.move_to(*ptopleft.round_tup)
         gloss.Sprite.draw(self, scale=self._raw_scale * game.zoom, rotation=angle)
 
 
@@ -141,20 +145,13 @@ class Orbit(object):
 
 class Background(Sprite):
     def __init__(self):
-        Sprite.__init__(self, 'space_dim.jpg')
-        t = self.texture
-        self._raw_scale = 1
-        self.gcenter = GVector(t.half_height, t.half_width) * -1 * self._raw_scale
-        self.gcenter = GVector(-1000, -1000)
+        Sprite.__init__(self, 'space_dim.jpg', 1)
+        self.gcenter = GVector(0, 0)
 
 class Circle(Sprite):
     def __init__(self):
-        Sprite.__init__(self, 'art/circle_cyan.png')
+        Sprite.__init__(self, 'art/circle_cyan.png', 1)
         self.gcenter = GVector(0, 0)
-
-    def draw(self):
-        """Draw on screen"""
-        gloss.Sprite.draw(self, scale=.05)
 
     def update(self):
         self.gcenter = game._ship.gcenter - GVector(10, 10)
@@ -163,8 +160,7 @@ class Circle(Sprite):
 
 class Satellite(Sprite):
     def __init__(self):
-        Sprite.__init__(self, 'art/blue_sun.png')
-        self._raw_scale = .01
+        Sprite.__init__(self, 'art/blue_sun.png', .01)
         x = random.randint(-300, 300)
         y = random.randint(-300, 300)
         self.gcenter = GVector(x, y)
@@ -234,8 +230,7 @@ class Satellite(Sprite):
 
 class Sun(Sprite):
     def __init__(self, gcenter=None):
-        Sprite.__init__(self, 'art/sun.png')
-        self._raw_scale = 1
+        Sprite.__init__(self, 'art/space_planet.png', .02)
         if gcenter:
             self.gcenter = gcenter
         else:
@@ -245,7 +240,6 @@ class Sun(Sprite):
 
 class Starship(Satellite):
     def __init__(self, gcenter):
-        gloss.Sprite.__init__(self, gloss.Texture('art/ship.png'))
         gloss.Sprite.__init__(self, gloss.Texture('art/ship.png'))
         self._angle = 0.0
         self._orbit_prediction_thread = None
@@ -259,6 +253,8 @@ class Starship(Satellite):
         self.propellent = 1500
         self.temperature = 0
         self.thrust = GVector(0, 0)
+        self._phalfsize = PVector(self.texture.half_width,
+            self.texture.half_height) * self._raw_scale
 
     def _update_temperature(self):
         """Calculate temperature increase/decrease"""
@@ -474,11 +470,16 @@ class Game(gloss.GlossGame):
         self.changed_scale = True
 
     def _zoom_in(self):
-        if self._zoom_level >= .2:
-            self._zoom_level -= .2
+        self._zoom_level -= .2
+        if pygame.KMOD_CTRL & pygame.key.get_mods():
+            self._zoom_level -= .8
+        if self._zoom_level < .01:
+            self._zoom_level = .01
 
     def _zoom_out(self):
         self._zoom_level += .2
+        if pygame.KMOD_CTRL & pygame.key.get_mods():
+            self._zoom_level += .8
 
     def _update_zoom(self):
         # I have no idea what i'm doing
@@ -531,8 +532,7 @@ class Game(gloss.GlossGame):
 
         self._background = Background()
         self.orbit = Orbit()
-        self._suns = [Sun(gcenter=GVector(100 * x, -100))
-            for x in xrange(1)]
+        self._suns = [Sun(gcenter=GVector(100, -100)), ]
         self._satellites = [Satellite() for x in xrange(10)]
         for s in self._satellites:
             s.place_in_orbit(self._suns[0])
