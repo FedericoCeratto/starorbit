@@ -291,13 +291,13 @@ class Starship(Satellite):
         self._recenter()
 
     def fire_thruster(self, thrust):
-        self.thrust = thrust * .01
-        self.propellent -= 100
+        self.thrust = GVector(thrust.tup) * .01
+        self.propellent -= 10
 
         forw_n = self.gspeed.normalized()
         side_n = forw_n.orthonormal()
-        forw_component = forw_n * (thrust * forw_n)
-        side_component = side_n * (thrust * side_n)
+        forw_component = forw_n * (self.thrust * forw_n)
+        side_component = side_n * (self.thrust * side_n)
         self._tp = Thruster(self.gcenter, forw_component * 500)
         game._particles.append(self._tp)
         self._tp = Thruster(self.gcenter, side_component * 500)
@@ -362,17 +362,23 @@ class Thruster(PSystem):
     def __init__(self, gcenter, gdir):
         self.gcenter = gcenter
         tex = gloss.Texture("smoke.tga")
+        wind = gdir.pvector
+        wind.modulo = game.zoom * 38
         self._ps = gloss.ParticleSystem(
             tex,
             onfinish = self._finished,
-            position = gcenter.pvector.tup,
+            position = gcenter.on_screen.tup,
             name = "smoke",
             initialparticles = 10,
-            particlelifespan = 300,
-            growth = 2.0,
-            wind = map(int, gdir.pvector.tup),
+            particlelifespan = 90,
+            growth = .8,
+            wind = map(int, wind.tup),
             minspeed = 1,
-            maxspeed = 5
+            maxspeed = 5,
+            minscale = game.zoom * .05,
+            maxscale = game.zoom * .1,
+            startcolor = Color(1, 1, 1, 1),
+            endcolor = Color(1, 1, 1, 0),
         )
 
 class Bar(object):
@@ -485,7 +491,7 @@ class Game(gloss.GlossGame):
         """Fire thrusters for one impulse"""
         if self._ship.propellent:
             mpos = pygame.mouse.get_pos()
-            thrust = self._ship.gcenter - GVector(mpos)
+            thrust = self._ship.gcenter.on_screen - PVector(mpos)
             self._ship.fire_thruster(thrust.normalized())
 
     def create_explosion(self, gcenter, victim):
