@@ -102,7 +102,7 @@ class Orbit(object):
 
     def fade_in(self, orbit):
         """Start fading in a new orbit"""
-        self._orbit = orbit
+        self._orbit = [o[0] for o in orbit]
         self._fading = 'in'
 
     def fade_out(self):
@@ -126,13 +126,13 @@ class Orbit(object):
             self._color = gloss.Color(1, 1, 1, self._alpha)
 
     def draw(self):
+        """Draw orbit"""
         if not self._orbit:
             return
 
-        orbit_centers = [o.on_screen for o in self._orbit]
-
+        p_orbit = [o.on_screen for o in self._orbit]
         gloss.Gloss.draw_lines(
-            orbit_centers,
+            p_orbit,
             color=self._color,
             width=game.zoom * 1,
             join=False
@@ -205,30 +205,31 @@ class Satellite(Sprite):
 
         return acceleration_v
 
-
-    def _predict_orbit(self, center):
+    def _predict_orbit_chunk(self):
         """Predict object orbit"""
-        #gspeed = self.gspeed * game.speed
-        gspeed = self.gspeed * 1
-        positions = []
-        far = False
-        start = center
-        for x in xrange(10000):
-            gspeed += self._calculate_acceleration(center, self.mass)
-            if gspeed.modulo > 12.5: # unreliable prediction
-                self.orbit = positions
-                return
-            center += gspeed
-            if x > 1000:
-                if center.distance(start) < .1:
-                    positions.append(center)
-                    self.orbit = positions
+        if len(self.orbit) == 0:
+            self.orbit = [(self.gcenter, self.gspeed)]
+
+        initial_gcenter = self.orbit[0][0]
+        gcenter, gspeed = self.orbit[-1]
+
+        for x in xrange(100):
+            gspeed += self._calculate_acceleration(gcenter, self.mass)
+            gcenter += gspeed
+
+            if len(self.orbit) > 100:
+                if gcenter.distance(initial_gcenter) < .1:
+                    self.orbit.append((gcenter, gspeed))
+                    self._orbit_prediction_running = False
+                    game.orbit.fade_in(self.orbit)
                     return
 
             if x % 10 == 0:
-                positions.append(center)
-        self.orbit = positions
-
+                self.orbit.append((gcenter, gspeed))
+                if len(self.orbit) > 500:
+                    self._orbit_prediction_running = False
+                    game.orbit.fade_in(self.orbit)
+                    return
 
 
 class Sun(Sprite):
@@ -248,6 +249,7 @@ class Starship(Satellite):
         gloss.Sprite.__init__(self, gloss.Texture('art/ship.png'))
         self._angle = 0.0
         self._orbit_prediction_thread = None
+        self._orbit_prediction_running = False
         self._raw_scale = .025
         self._tp = None
         self.gcenter = gcenter
@@ -275,24 +277,12 @@ class Starship(Satellite):
         if self.thrust:
             self.gspeed += self.thrust
             self.thrust = None
-
-            # fire off a thread to perform prediction
-            self._orbit_prediction_thread = Thread(
-                target=self._predict_orbit,
-                args=(self.gcenter, )
-            )
-            self._orbit_prediction_thread.start()
-            # blank out old orbit
             game.orbit.fade_out()
+            self._orbit_prediction_running = True
+            self.orbit = []
 
-
-        if self._orbit_prediction_thread:
-            if not self._orbit_prediction_thread.is_alive():
-                # thread just terminated
-                self._orbit_prediction_thread = None
-                # plot new orbit
-                game.orbit.fade_in(self.orbit)
-
+        if self._orbit_prediction_running:
+            self._predict_orbit_chunk()
 
         self.gspeed += self._calculate_acceleration(self.gcenter, self.mass)
         self.gcenter += self.gspeed * game.speed
@@ -409,7 +399,7 @@ class HBar(Bar):
         self._stopleft = PVector(res.x * pos_f, res.y - 10)
         self._value_max = float(vmax)
         self._value = 1
-        self._color = gloss.Color(0, 0, 0, 0)
+        self._color = color
 
     def draw(self):
         gloss.Gloss.draw_box(
@@ -547,8 +537,8 @@ class Game(gloss.GlossGame):
         self._ship.place_in_orbit(self._suns[0])
 
         self._bars = [
-            HBar(self._ship, 'propellent', .05, gloss.Color.GREEN, vmax=1500),
-            HBar(self._ship, 'temperature', .40, gloss.Color.RED, vmax=1500),
+            HBar(self._ship, 'propellent', .05, gloss.Color(0, 1, 0, .6), vmax=1500),
+            HBar(self._ship, 'temperature', .40, gloss.Color(1, 0, 0, .6), vmax=1500),
         ]
 
     def _add_solar_debris(self):
