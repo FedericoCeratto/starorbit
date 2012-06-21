@@ -243,6 +243,8 @@ class Starship(Satellite):
     def __init__(self, gcenter):
         gloss.Sprite.__init__(self, gloss.Texture('art/ship.png'))
         self._angle = 0.0
+        self._target_angle = 0.0
+        self._angular_velocity = 0.0
         self._orbit_prediction_thread = None
         self._orbit_prediction_running = False
         self._raw_scale = .025
@@ -283,7 +285,9 @@ class Starship(Satellite):
 
         self.gspeed += self._calculate_acceleration(self.gcenter, self.mass)
         self.gcenter += self.gspeed * game.speed
-        self._angle = - self.gspeed.angle / math.pi * 180 + 180
+        #self._angle = - self.gspeed.angle / math.pi * 180 + 180
+        self._rotate()
+
         self._update_temperature()
         self._recenter()
 
@@ -299,6 +303,18 @@ class Starship(Satellite):
         game._particles.append(self._tp)
         self._tp = Thruster(self.gcenter, side_component * 500)
         game._particles.append(self._tp)
+
+    def set_target_angle(self, vector):
+        """Set ship target angle. Side thrusters will be engaged to
+        rotate it
+        """
+        self._target_angle = vector.angle
+
+    def _rotate(self):
+        """Rotate ship based on angle, angular velocity and target angle
+        """
+        self._angle += self._angular_velocity #TODO deltat
+
 
 
 class PSystem(object):
@@ -498,6 +514,17 @@ class Game(gloss.GlossGame):
             mpos = pygame.mouse.get_pos()
             thrust = self._ship.gcenter.on_screen - PVector(mpos)
             self._ship.fire_thruster(thrust.normalized())
+        else:
+            pass #TODO: add error sound
+
+    def _rotate_ship(self):
+        """Fire side thrusters to rotate ship"""
+        if self._ship.propellent:
+            mpos = pygame.mouse.get_pos()
+            thrust = self._ship.gcenter.on_screen - PVector(mpos)
+            self._ship.set_target_angle(thrust.normalized())
+        else:
+            pass #TODO: add error sound
 
     def create_explosion(self, gcenter, victim):
         self.kill_sprite(victim)
@@ -527,9 +554,16 @@ class Game(gloss.GlossGame):
             pygame.quit()
             sys.exit()
         elif event.unicode == u'i':
+            self.soundplayer.play('thruster')
             self._impulse()
+        elif event.unicode == u'p':
+            self._rotate_ship()
+
+        #FIXME: remove test sounds
         elif event.unicode == u'g':
             self.soundplayer.play('gear')
+        elif event.unicode == u'b':
+            self.soundplayer.play('beep')
 
     def load_content(self):
         """Load images, create game objects"""
