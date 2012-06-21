@@ -213,14 +213,14 @@ class Satellite(Sprite):
             gspeed += self._calculate_acceleration(gcenter, self.mass)
             gcenter += gspeed
 
-            if len(self.orbit) > 100:
-                if gcenter.distance(initial_gcenter) < .1:
+            if len(self.orbit) > 10:
+                if gcenter.distance(initial_gcenter) < 6:
                     self.orbit.append((gcenter, gspeed))
                     self._orbit_prediction_running = False
                     game.orbit.fade_in(self.orbit)
                     return
 
-            if x % 10 == 0:
+            if gcenter.distance(self.orbit[-1][0]) > 5:
                 self.orbit.append((gcenter, gspeed))
                 if len(self.orbit) > 500:
                     self._orbit_prediction_running = False
