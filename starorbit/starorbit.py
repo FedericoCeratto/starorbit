@@ -28,6 +28,7 @@ import random
 import sys
 
 from vectors import Vector, PVector
+from sound import SoundPlayer
 
 game = None
 SAT_L = 0
@@ -440,6 +441,9 @@ class Game(gloss.GlossGame):
         self.changed_scale = True
         self.gcamera = GVector(0, 0)
 
+        # load sounds
+        self.soundplayer = SoundPlayer()
+
         # event handlers
         self.on_mouse_down = self._mouse_click
         self.on_mouse_motion = lambda x: x
@@ -524,6 +528,8 @@ class Game(gloss.GlossGame):
             sys.exit()
         elif event.unicode == u'i':
             self._impulse()
+        elif event.unicode == u'g':
+            self.soundplayer.play('gear')
 
     def load_content(self):
         """Load images, create game objects"""
