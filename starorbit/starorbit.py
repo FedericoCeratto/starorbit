@@ -611,8 +611,8 @@ class Game(gloss.GlossGame):
             self._zoom_in()
         elif event.button == 5: # wheen down
             self._zoom_out()
-        #elif event.button == 3: # right click
-        #mouse.get_pressed() allows continuous firing
+        elif event.button == 3: # right click
+            self._rotate_ship()
 
     def _keypress(self, event):
         if event.key == 27:
@@ -622,8 +622,6 @@ class Game(gloss.GlossGame):
         elif event.unicode == u' ':
             self.soundplayer.play('thruster')
             self._impulse()
-        elif event.unicode == u'p':
-            self._rotate_ship()
 
         #FIXME: remove test sounds
         elif event.unicode == u'g':
