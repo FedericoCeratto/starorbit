@@ -149,6 +149,43 @@ class Background(Sprite):
         Sprite.__init__(self, 'space_dim.jpg', 1)
         self.gcenter = GVector(0, 0)
 
+class BlackOverlay(object):
+    """Black overlay used to fade to black"""
+    def __init__(self):
+        self._alpha = 0
+        self._fading = 0
+
+    def update(self):
+        #FIXME: deltat
+        if self._fading:
+            self._alpha += self._fading
+            if self._alpha < 0:
+                self._alpha = 0
+                self._fading = 0
+            elif self._alpha > 1:
+                self._angle = 1
+                self._fading = 0
+
+    def fade_to_black(self, speed=.01):
+        self._fading = speed
+
+    def set_to_black(self):
+        self._alpha = 1
+        self._fading = 0
+
+    def fade_in(self, speed=.01):
+        self._fading = -speed
+
+    def draw(self):
+        """Draw on screen"""
+        if self._alpha:
+            gloss.Gloss.draw_box(
+                position = (0, 0),
+                width = game.resolution[0],
+                height = game.resolution[1],
+                color = gloss.Color(0, 0, 0, self._alpha),
+            )
+
 class Circle(Sprite):
     def __init__(self):
         Sprite.__init__(self, 'art/circle_cyan.png', 1)
@@ -448,9 +485,7 @@ class Game(gloss.GlossGame):
         else:
             self._change_resolution(resolution)
         self._screen_center = self.resolution / 2
-        self._clock = pygame.time.Clock()
         self._display_fps = display_fps
-        self.stack = pygame.sprite.LayeredDirty()
         self.speed = 1
         self.zoom = 1
         self._zoom_level = 3.9
@@ -586,6 +621,9 @@ class Game(gloss.GlossGame):
             HBar(self._ship, 'propellent', .05, gloss.Color(0, 1, 0, .6), vmax=1500),
             HBar(self._ship, 'temperature', .40, gloss.Color(1, 0, 0, .6), vmax=1500),
         ]
+        self._black_overlay = BlackOverlay()
+        self._black_overlay.set_to_black()
+        self._black_overlay.fade_in()
 
     def _add_solar_debris(self):
         """Add debris caused by sun"""
@@ -606,7 +644,8 @@ class Game(gloss.GlossGame):
         self._add_solar_debris()
         self.changed_scale = True
         stack = self._suns + self._satellites + self._particles + \
-            [self.orbit] + self._circles + [self._ship] + self._bars
+            [self.orbit] + self._circles + [self._ship] + \
+            [self._black_overlay] +  self._bars
         for s in stack:
             s.update()
 
