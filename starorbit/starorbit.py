@@ -342,20 +342,49 @@ class Starship(Satellite):
         game._particles.append(self._tp)
 
     def fire_thruster(self):
-        self.thrust = GVector(self.gspeed.normalized()) * .01
         self.propellent -= 10
+
+        direction = GVector(1, 0)
+        direction.angle = self._angle
+        self.thrust = direction * .01
+
+        self._tp = Thruster(self.gcenter, direction * 500)
+        game._particles.append(self._tp)
 
     def set_target_angle(self, vector):
         """Set ship target angle. Side thrusters will be engaged to
         rotate it
         """
-        self._target_angle = vector.angle
+        self._target_angle = 360 - vector.angle * 180 /  math.pi
 
     def _rotate(self):
         """Rotate ship based on angle, angular velocity and target angle
         """
         self._angle += self._angular_velocity #TODO deltat
+        max_av = 2
+        momentum = .1
+        slowdown_ratio = max_av / momentum * 1.1
 
+        delta = self._target_angle - self._angle
+
+        if delta > momentum:
+            if self._angular_velocity * slowdown_ratio > delta:
+                # closing too fast - slow down
+                self._angular_velocity -= momentum
+            elif self._angular_velocity < max_av:
+                # speed up rotation
+                self._angular_velocity += momentum
+
+        elif delta < -momentum:
+            if self._angular_velocity * slowdown_ratio < delta:
+                # closing too fast - slow down
+                self._angular_velocity += momentum
+            elif self._angular_velocity > -max_av:
+                # speed up rotation
+                self._angular_velocity -= momentum
+
+        else:
+            self._angular_velocity = 0
 
 
 class PSystem(object):
@@ -550,9 +579,7 @@ class Game(gloss.GlossGame):
     def _impulse(self):
         """Fire thrusters for one impulse"""
         if self._ship.propellent:
-            mpos = pygame.mouse.get_pos()
-            thrust = self._ship.gcenter.on_screen - PVector(mpos)
-            self._ship.fire_thruster(thrust.normalized())
+            self._ship.fire_thruster()
         else:
             pass #TODO: add error sound
 
@@ -592,7 +619,7 @@ class Game(gloss.GlossGame):
             # quit on Esc key or window closing
             pygame.quit()
             sys.exit()
-        elif event.unicode == u'i':
+        elif event.unicode == u' ':
             self.soundplayer.play('thruster')
             self._impulse()
         elif event.unicode == u'p':
