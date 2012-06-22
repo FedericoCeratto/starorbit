@@ -73,27 +73,23 @@ def distance(a, b):
 
 class Sprite(gloss.Sprite):
     def __init__(self, fname, raw_scale):
+        self._angle = 0
         gloss.Sprite.__init__(self, gloss.Texture(fname))
         self._raw_scale = raw_scale
         self._raw_rotation = 0.0
-        self._phalfsize = PVector(self.texture.half_width,
-            self.texture.half_height) * raw_scale
 
     def _recenter(self):
         """Update sprite rect based on screen offset and image size"""
-        ptopleft = self.gcenter.on_screen - self._phalfsize * .01
-        self.move_to(*ptopleft.round_tup)
+        self.move_to(*self.gcenter.on_screen)
 
     def update(self):
-        pass
+        self._recenter()
 
     def draw(self):
         """Draw on screen"""
-        self._recenter()
         angle = getattr(self, '_angle', 0.0)
-        ptopleft = self.gcenter.on_screen - self._phalfsize * game.zoom
-        self.move_to(*ptopleft.round_tup)
-        gloss.Sprite.draw(self, scale=self._raw_scale * game.zoom, rotation=angle)
+        gloss.Sprite.draw(self, scale=self._raw_scale * game.zoom,
+            rotation=angle, origin=None)
 
 
 class Orbit(object):
@@ -143,6 +139,20 @@ class Orbit(object):
             join=False
         )
 
+class BlackBackground(object):
+    """Black background, below the star backdrop"""
+
+    def update(self):
+        pass
+
+    def draw(self):
+        """Draw on screen"""
+        gloss.Gloss.draw_box(
+            position = (0, 0),
+            width = game.resolution[0],
+            height = game.resolution[1],
+            color = gloss.Color(0, 0, 0, 1),
+        )
 
 class Background(Sprite):
     def __init__(self):
@@ -278,13 +288,13 @@ class Sun(Sprite):
 
 class Starship(Satellite):
     def __init__(self, gcenter):
-        gloss.Sprite.__init__(self, gloss.Texture('art/ship.png'))
+        gloss.Sprite.__init__(self, gloss.Texture('art/shuttle.png'))
         self._angle = 0.0
         self._target_angle = 0.0
         self._angular_velocity = 0.0
         self._orbit_prediction_thread = None
         self._orbit_prediction_running = False
-        self._raw_scale = .025
+        self._raw_scale = .0025
         self._tp = None
         self.gcenter = gcenter
         self.gspeed = GVector(0, -0.3)
@@ -293,8 +303,6 @@ class Starship(Satellite):
         self.propellent = 1500
         self.temperature = 0
         self.thrust = GVector(0, 0)
-        self._phalfsize = PVector(self.texture.half_width,
-            self.texture.half_height) * self._raw_scale
 
     def _update_temperature(self):
         """Calculate temperature increase/decrease"""
@@ -634,6 +642,7 @@ class Game(gloss.GlossGame):
         self._font = gloss.SpriteFont(
             '/usr/share/fonts/truetype/freefont/FreeSans.ttf', 10)
 
+        self._below_background = BlackBackground()
         self._background = Background()
         self.orbit = Orbit()
         self._suns = [Sun(gcenter=GVector(100, -100)), ]
@@ -672,15 +681,32 @@ class Game(gloss.GlossGame):
 
         self._add_solar_debris()
         self.changed_scale = True
-        stack = self._suns + self._satellites + self._particles + \
-            [self.orbit] + self._circles + [self._ship] + \
-            [self._black_overlay] +  self._bars
-        for s in stack:
-            s.update()
+        layers = (
+            '_below_background',
+            '_background',
+            '_suns',
+            '_satellites',
+            '_particles',
+            'orbit',
+            '_circles',
+            '_ship',
+            '_black_overlay',
+            '_bars'
+        )
 
-        self._background.draw()
-        for s in stack:
-            s.draw()
+        for l in layers:
+            items = getattr(self, l)
+            if isinstance(items, list):
+                [i.update() for i in items]
+            else:
+                items.update()
+
+        for l in layers:
+            items = getattr(self, l)
+            if isinstance(items, list):
+                [i.draw() for i in items]
+            else:
+                items.draw()
 
         if self._display_fps:
             fps = 1/gloss.Gloss.elapsed_seconds
