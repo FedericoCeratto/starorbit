@@ -101,6 +101,18 @@ class Vector(object):
         cos_alpha = self * other / (m * om)
         return math.acos(cos_alpha)
 
+    @property
+    def angle_ccw_degs(self):
+        """CCW angle in degrees"""
+        m = self.modulo
+        if m == 0:
+            return 0
+
+        a = math.acos(self.y / m) * 180 / math.pi
+        if self.x >= 0:
+            return 360 - a
+        return a
+
     def distance(self, other):
         assert type(self) == type(other), "Incompatible Vector types"
         d = other - self

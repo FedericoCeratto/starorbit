@@ -363,7 +363,7 @@ class Starship(Satellite):
         """Set ship target angle. Side thrusters will be engaged to
         rotate it
         """
-        self._target_angle = 360 - vector.angle * 180 /  math.pi
+        self._target_angle = (vector.angle_ccw_degs + 180) % 360
 
     def _rotate(self):
         """Rotate ship based on angle, angular velocity and target angle
