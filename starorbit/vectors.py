@@ -102,8 +102,8 @@ class Vector(object):
         return math.acos(cos_alpha)
 
     @property
-    def angle_ccw_degs(self):
-        """CCW angle in degrees"""
+    def angle_cw_degs(self):
+        """CW angle in degrees"""
         m = self.modulo
         if m == 0:
             return 0

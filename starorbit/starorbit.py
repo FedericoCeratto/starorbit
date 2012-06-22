@@ -363,7 +363,7 @@ class Starship(Satellite):
         """Set ship target angle. Side thrusters will be engaged to
         rotate it
         """
-        self._target_angle = (vector.angle_ccw_degs + 180) % 360
+        self._target_angle = (vector.angle_cw_degs + 180) % 360
 
     def _rotate(self):
         """Rotate ship based on angle, angular velocity and target angle
@@ -553,6 +553,7 @@ class Game(gloss.GlossGame):
         self._background = pygame.transform.smoothscale(self._background,
             self.resolution)
         self.changed_scale = True
+        self._presolution = PVector(self.resolution)
 
     def _change_resolution(self, resolution):
         """Change screen resolution"""
@@ -563,7 +564,8 @@ class Game(gloss.GlossGame):
         self._background = pygame.image.load('space_dim.jpg')
         self._background = pygame.transform.smoothscale(self._background,
             resolution)
-        self.changed_scale = True
+        self.changed_scale = True #FIXME: remove changed_scale everywhere
+        self._presolution = PVector(self.resolution)
 
     def _zoom_in(self):
         self._zoom_level -= .2
@@ -708,10 +710,19 @@ class Game(gloss.GlossGame):
             else:
                 items.draw()
 
+        self._font.draw("%.2f" % self._ship._angle, scale = 1,
+            position = self._presolution - PVector(50, 15),
+            color = gloss.Color(1, 1, 1, .5),
+            letterspacing = 0,
+            linespacing = -25
+        )
+
         if self._display_fps:
             fps = 1/gloss.Gloss.elapsed_seconds
             self._font.draw("%.2f" % fps, scale = 1,
                 color = gloss.Color.BLUE, letterspacing = 0, linespacing = -25)
+
+
 
 def parse_args():
     """Parse CLI args"""
