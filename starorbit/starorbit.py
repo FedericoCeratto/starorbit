@@ -328,7 +328,7 @@ class Starship(Satellite):
         self._update_temperature()
         self._recenter()
 
-    def fire_thruster(self, thrust):
+    def _OLD_fire_thruster(self, thrust):
         self.thrust = GVector(thrust.tup) * .01
         self.propellent -= 10
 
@@ -340,6 +340,10 @@ class Starship(Satellite):
         game._particles.append(self._tp)
         self._tp = Thruster(self.gcenter, side_component * 500)
         game._particles.append(self._tp)
+
+    def fire_thruster(self):
+        self.thrust = GVector(self.gspeed.normalized()) * .01
+        self.propellent -= 10
 
     def set_target_angle(self, vector):
         """Set ship target angle. Side thrusters will be engaged to
