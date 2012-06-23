@@ -336,8 +336,8 @@ class Starship(Satellite):
         print self._angle, repr(thrust), thrust.angle, thrust.angle_cw_degs
         self.gspeed += thrust
         self._start_orbit_prediction()
-        self._tp = Thruster(self.gcenter, thrust)
-        game._particles.append(self._tp)
+        t = Thruster(self.gcenter, thrust)
+        game._particles.append(t)
 
     def _start_orbit_prediction(self):
         game.orbit.fade_out()
@@ -373,14 +373,20 @@ class Starship(Satellite):
         # momentum should be degrees per (sec ** 2)
         momentum = degrees_per_sec(math.copysign(.1, signed_delta))
 
-        if av != 0 and math.sqrt(2 * abs(signed_delta) / .1) > abs(signed_delta / av):
+        if av != 0 and math.sqrt(2 * abs(signed_delta) / .1) > 1.05 * abs(signed_delta / av):
             # closing too fast - better slow down
             self._angular_velocity -= momentum
-            self.yaw_rcs_status = 'YAW CCW' if av > 0 else 'YAW CW'
-        else:
+            cw = momentum < 0
+        elif av == 0 or math.sqrt(2 * abs(signed_delta) / .1) < 0.95 * abs(signed_delta / av):
             # increase speed
             self._angular_velocity += momentum
-            self.yaw_rcs_status = 'YAW CW' if av > 0 else 'YAW CCW'
+            cw = momentum > 0
+        else:
+            return
+
+        self.yaw_rcs_status = 'YAW CW' if cw else 'YAW CCW'
+        t = RCSThruster(self, cw=cw)
+        game._particles.append(t)
 
 
 class PSystem(object):
@@ -443,7 +449,7 @@ class Thruster(PSystem):
         tex = gloss.Texture("smoke.tga")
 
         wind = PVector(game.zoom * 38, 0)
-        wind.angle_cw_degs = 360 - thrust.angle
+        wind.angle_cw_degs = thrust.angle_cw_degs
         wind = wind.round_tup
 
         self._ps = gloss.ParticleSystem(
@@ -462,6 +468,55 @@ class Thruster(PSystem):
             startcolor = Color(1, 1, 1, 1),
             endcolor = Color(1, 1, 1, 0),
         )
+
+
+class RCSThruster(PSystem):
+    """Propellent particles from the RCS nozzles"""
+    def __init__(self, ship, cw=True):
+        self.gcenter = ship.gcenter
+        self._tex = gloss.Texture("smoke.tga")
+        self._ps = []
+
+        gdelta_front = GVector(game.zoom * .01, 0)
+        gdelta_front.angle_cw_degs = degrees(180) - ship._angle
+        gdelta_rear = GVector(game.zoom * .01, 0)
+        gdelta_rear.angle_cw_degs = degrees(0) - ship._angle
+
+        wind_front = PVector(game.zoom * 13, 0)
+        wind_rear = PVector(game.zoom * 13, 0)
+
+        if cw:
+            wind_front.angle_cw_degs = degrees(270) - ship._angle
+            wind_rear.angle_cw_degs = degrees(90) - ship._angle
+        else:
+            wind_front.angle_cw_degs = degrees(90) - ship._angle
+            wind_rear.angle_cw_degs = degrees(270) - ship._angle
+
+        self._create_particles(ship.gcenter + gdelta_front, wind_front)
+        self._create_particles(ship.gcenter + gdelta_rear, wind_rear)
+
+    def _create_particles(self, gpos, wind):
+        ps = gloss.ParticleSystem(
+            self._tex,
+            onfinish = self._finished,
+            position = gpos.on_screen.tup,
+            name = "smoke",
+            initialparticles = 5,
+            particlelifespan = 90,
+            growth = .8,
+            wind = wind,
+            minspeed = 1,
+            maxspeed = 5,
+            minscale = game.zoom * .005,
+            maxscale = game.zoom * .007,
+            startcolor = Color(1, 1, 1, 1),
+            endcolor = Color(1, 1, 1, 0),
+        )
+        self._ps.append(ps)
+
+    def draw(self):
+        for ps in self._ps:
+            ps.draw()
 
 class Bar(object):
     """Basic display Bar class"""
@@ -604,7 +659,7 @@ class Game(gloss.GlossGame):
                     li.remove(victim)
                     return
 
-        raise RuntimeError, "Unable to kill %s" % repr(victim)
+        #FIXME raise RuntimeError, "Unable to kill %s" % repr(victim)
 
     def _mouse_click(self, event):
         self.changed_scale = False
