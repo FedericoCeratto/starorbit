@@ -1,4 +1,5 @@
 import math
+from units import meters, degrees, radians
 
 class Vector(object):
     """2D vector, with no specific unit value"""
@@ -76,16 +77,16 @@ class Vector(object):
     @property
     def angle(self):
         if self.modulo == 0:
-            return 0
+            return radians(0)
 
         a = math.acos(self.y / self.modulo)
         if self.x >= 0:
-            return a
-        return math.pi * 2 - a
+            return radians(a)
+        return radians(math.pi * 2 - a)
 
     @angle.setter
     def angle(self, a):
-        assert isinstance(a, (int, float)), "Integer or Float required."
+        assert isinstance(a, radians), "Radians unit required."
         m = self.modulo
         x = math.sin(a) * m
         y = math.cos(a) * m
@@ -105,19 +106,18 @@ class Vector(object):
         """CW angle in degrees"""
         m = self.modulo
         if m == 0:
-            return 0
+            return degrees(0)
 
         a = math.acos(self.y / m) * 180 / math.pi
         if self.x >= 0:
-            return 360 - a
-        return a
+            return degrees(360 - a)
+        return degrees(a)
 
     @angle_cw_degs.setter
     def angle_cw_degs(self, a):
         """Set angle from CW degrees"""
-        assert isinstance(a, (int, float)), "Integer or Float required."
-        a *= math.pi / 180
-        self.angle = a
+        assert isinstance(a, degrees), "Degrees unit required."
+        self.angle = a.radians
 
     def distance(self, other):
         assert type(self) == type(other), "Incompatible Vector types"

@@ -27,6 +27,7 @@ import pygame
 import random
 import sys
 
+from units import degrees, radians, seconds, degrees_per_sec
 from vectors import Vector, PVector
 from sound import SoundPlayer
 
@@ -289,9 +290,9 @@ class Sun(Sprite):
 class Starship(Satellite):
     def __init__(self, gcenter):
         gloss.Sprite.__init__(self, gloss.Texture('art/shuttle.png'))
-        self._angle = 0.0
-        self._target_angle = 0.0
-        self._angular_velocity = 0.0
+        self._angle = degrees(0)
+        self._target_angle = degrees(0)
+        self._angular_velocity = degrees_per_sec(0)
         self._orbit_prediction_thread = None
         self._orbit_prediction_running = False
         self._raw_scale = .0025
@@ -301,8 +302,8 @@ class Starship(Satellite):
         self.mass = 4
         self.orbit = ()
         self.propellent = 1500
-        self.temperature = 0
-        self.thrust = GVector(0, 0)
+        self.hull_temperature = 0
+        self._start_orbit_prediction()
 
     def _update_temperature(self):
         """Calculate temperature increase/decrease"""
@@ -311,77 +312,75 @@ class Starship(Satellite):
             distance = self.gcenter.distance(sun.gcenter)
             dt += 10000 / distance ** 2
 
-        if dt < 0 and self.temperature < 0:
+        if dt < 0 and self.hull_temperature < 0:
             return
 
-        self.temperature += dt
+        self.hull_temperature += dt
 
     def update(self):
         """Plot orbit, move ship"""
-        if self.thrust:
-            self.gspeed += self.thrust
-            self.thrust = None
-            game.orbit.fade_out()
-            self._orbit_prediction_running = True
-            self.orbit = []
-
         if self._orbit_prediction_running:
             self._predict_orbit_chunk()
 
         self.gspeed += self._calculate_acceleration(self.gcenter, self.mass)
         self.gcenter += self.gspeed * game.speed
-        #self._angle = - self.gspeed.angle / math.pi * 180 + 180
         self._rotate()
-
         self._update_temperature()
         self._recenter()
 
     def fire_thruster(self):
+        """Fire thruster"""
         self.propellent -= 10
-        self._tp = Thruster(self.gcenter, self._angle, power=.01)
+        thrust = GVector(.5, 0)
+        thrust.angle_cw_degs = self._angle
+        print self._angle, repr(thrust), thrust.angle, thrust.angle_cw_degs
+        self.gspeed += thrust
+        self._start_orbit_prediction()
+        self._tp = Thruster(self.gcenter, thrust)
         game._particles.append(self._tp)
+
+    def _start_orbit_prediction(self):
+        game.orbit.fade_out()
+        self._orbit_prediction_running = True
+        self.orbit = []
 
     def set_target_angle(self, vector):
         """Set ship target angle. Side thrusters will be engaged to
         rotate it
         """
-        self._target_angle = (vector.angle_cw_degs + 180) % 360
+        self._target_angle = vector.angle_cw_degs.opposite
 
     def _rotate(self):
-        """Rotate ship based on angle, angular velocity and target angle
+        """Control yaw Reaction control system
+        based on angle, angular velocity and target angle
         """
-        self._angle += self._angular_velocity #TODO deltat
-        self._angle %= 360
-        max_av = 2
-        momentum = .1
-        slowdown_ratio = max_av / momentum * 1.1
+        #TODO deltat
+        self._angle += self._angular_velocity * seconds(1)
+        self.yaw_rcs_status = ''
 
-        delta = self._target_angle - self._angle
+        signed_delta = float(self._target_angle - self._angle)
+        # signed_delta is defined between -180 and 180
+        if signed_delta > 180:
+            signed_delta -= 360
 
-        # perform the shortest rotation
-        if delta > 180:
-            delta -= 360
-        elif delta < -180:
-            delta += 360
+        if abs(signed_delta) < 1:
+            # rotation completed
+            self._angular_velocity = degrees_per_sec(0)
+            self._angle = self._target_angle
+            return
 
-        if delta > momentum:
-            if self._angular_velocity * slowdown_ratio > delta:
-                # closing too fast - slow down
-                self._angular_velocity -= momentum
-            elif self._angular_velocity < max_av:
-                # speed up rotation
-                self._angular_velocity += momentum
+        av = self._angular_velocity
+        # momentum should be degrees per (sec ** 2)
+        momentum = degrees_per_sec(math.copysign(.1, signed_delta))
 
-        elif delta < -momentum:
-            if self._angular_velocity * slowdown_ratio < delta:
-                # closing too fast - slow down
-                self._angular_velocity += momentum
-            elif self._angular_velocity > -max_av:
-                # speed up rotation
-                self._angular_velocity -= momentum
-
+        if av != 0 and math.sqrt(2 * abs(signed_delta) / .1) > abs(signed_delta / av):
+            # closing too fast - better slow down
+            self._angular_velocity -= momentum
+            self.yaw_rcs_status = 'YAW CCW' if av > 0 else 'YAW CW'
         else:
-            self._angular_velocity = 0
+            # increase speed
+            self._angular_velocity += momentum
+            self.yaw_rcs_status = 'YAW CW' if av > 0 else 'YAW CCW'
 
 
 class PSystem(object):
@@ -439,14 +438,12 @@ class Debris(PSystem):
 
 
 class Thruster(PSystem):
-    def __init__(self, gcenter, angle, power=1):
-        assert isinstance(angle, (int, float)), "Integer or Float required."
-        assert isinstance(power, (int, float)), "Integer or Float required."
+    def __init__(self, gcenter, thrust):
         self.gcenter = gcenter
         tex = gloss.Texture("smoke.tga")
 
         wind = PVector(game.zoom * 38, 0)
-        wind.angle_cw_degs = 360 - angle
+        wind.angle_cw_degs = 360 - thrust.angle
         wind = wind.round_tup
 
         self._ps = gloss.ParticleSystem(
@@ -653,7 +650,7 @@ class Game(gloss.GlossGame):
 
         self._bars = [
             HBar(self._ship, 'propellent', .05, gloss.Color(0, 1, 0, .6), vmax=1500),
-            HBar(self._ship, 'temperature', .40, gloss.Color(1, 0, 0, .6), vmax=1500),
+            HBar(self._ship, 'hull_temperature', .40, gloss.Color(1, 0, 0, .6), vmax=1500),
         ]
         self._black_overlay = BlackOverlay()
         self._black_overlay.set_to_black()
@@ -704,18 +701,24 @@ class Game(gloss.GlossGame):
             else:
                 items.draw()
 
-        self._font.draw("%.2f" % self._ship._angle, scale = 1,
-            position = self._presolution - PVector(50, 15),
-            color = gloss.Color(1, 1, 1, .5),
-            letterspacing = 0,
-            linespacing = -25
-        )
+        self._draw_bottom_right_text("%06.2f" % self._ship._angle, 50)
+        self._draw_bottom_right_text("%06.2f" % self._ship.gspeed.angle_cw_degs, 100)
+        self._draw_bottom_right_text("%06.2f" % self._ship.gspeed.modulo, 150)
+        self._draw_bottom_right_text(self._ship.yaw_rcs_status, 220)
 
         if self._display_fps:
             fps = 1/gloss.Gloss.elapsed_seconds
             self._font.draw("%.2f" % fps, scale = 1,
                 color = gloss.Color.BLUE, letterspacing = 0, linespacing = -25)
 
+    def _draw_bottom_right_text(self, text, y):
+        """Draw gray metrics"""
+        self._font.draw(text, scale = 1,
+            position = self._presolution - PVector(y, 15),
+            color = gloss.Color(1, 1, 1, .5),
+            letterspacing = 0,
+            linespacing = -25
+        )
 
 
 def parse_args():
