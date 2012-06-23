@@ -19,7 +19,6 @@
 import gloss
 from gloss import Gloss, GlossGame
 from optparse import OptionParser
-from pygame import gfxdraw
 from pygame.locals import *
 from threading import Thread
 import math
