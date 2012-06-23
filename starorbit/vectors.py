@@ -55,8 +55,7 @@ class Vector(object):
         raise(TypeError("Incompatible Vector types"))
 
     def __div__(self, scalar):
-        assert isinstance(scalar, int) or isinstance(scalar, float), \
-            "Integer or Float required."
+        assert isinstance(scalar, (int, float)), "Integer or Float required."
         return type(self)(self.x / scalar, self.y / scalar)
 
 
@@ -67,7 +66,7 @@ class Vector(object):
 
     @modulo.setter
     def modulo(self, m):
-        assert isinstance(m, int) or isinstance(m, float), "Integer or Float required."
+        assert isinstance(m, (int, float)), "Integer or Float required."
         a = self.angle
         x = math.sin(a) * m
         y = math.cos(a) * m
@@ -86,7 +85,7 @@ class Vector(object):
 
     @angle.setter
     def angle(self, a):
-        assert isinstance(a, int) or isinstance(a, float), "Integer or Float required."
+        assert isinstance(a, (int, float)), "Integer or Float required."
         m = self.modulo
         x = math.sin(a) * m
         y = math.cos(a) * m
@@ -112,6 +111,13 @@ class Vector(object):
         if self.x >= 0:
             return 360 - a
         return a
+
+    @angle_cw_degs.setter
+    def angle_cw_degs(self, a):
+        """Set angle from CW degrees"""
+        assert isinstance(a, (int, float)), "Integer or Float required."
+        a *= math.pi / 180
+        self.angle = a
 
     def distance(self, other):
         assert type(self) == type(other), "Incompatible Vector types"

@@ -336,27 +336,9 @@ class Starship(Satellite):
         self._update_temperature()
         self._recenter()
 
-    def _OLD_fire_thruster(self, thrust):
-        self.thrust = GVector(thrust.tup) * .01
-        self.propellent -= 10
-
-        forw_n = self.gspeed.normalized()
-        side_n = forw_n.orthonormal()
-        forw_component = forw_n * (self.thrust * forw_n)
-        side_component = side_n * (self.thrust * side_n)
-        self._tp = Thruster(self.gcenter, forw_component * 500)
-        game._particles.append(self._tp)
-        self._tp = Thruster(self.gcenter, side_component * 500)
-        game._particles.append(self._tp)
-
     def fire_thruster(self):
         self.propellent -= 10
-
-        direction = GVector(1, 0)
-        direction.angle = self._angle
-        self.thrust = direction * .01
-
-        self._tp = Thruster(self.gcenter, direction * 500)
+        self._tp = Thruster(self.gcenter, self._angle, power=.01)
         game._particles.append(self._tp)
 
     def set_target_angle(self, vector):
@@ -369,11 +351,18 @@ class Starship(Satellite):
         """Rotate ship based on angle, angular velocity and target angle
         """
         self._angle += self._angular_velocity #TODO deltat
+        self._angle %= 360
         max_av = 2
         momentum = .1
         slowdown_ratio = max_av / momentum * 1.1
 
         delta = self._target_angle - self._angle
+
+        # perform the shortest rotation
+        if delta > 180:
+            delta -= 360
+        elif delta < -180:
+            delta += 360
 
         if delta > momentum:
             if self._angular_velocity * slowdown_ratio > delta:
@@ -450,11 +439,16 @@ class Debris(PSystem):
 
 
 class Thruster(PSystem):
-    def __init__(self, gcenter, gdir):
+    def __init__(self, gcenter, angle, power=1):
+        assert isinstance(angle, (int, float)), "Integer or Float required."
+        assert isinstance(power, (int, float)), "Integer or Float required."
         self.gcenter = gcenter
         tex = gloss.Texture("smoke.tga")
-        wind = gdir.pvector
-        wind.modulo = game.zoom * 38
+
+        wind = PVector(game.zoom * 38, 0)
+        wind.angle_cw_degs = 360 - angle
+        wind = wind.round_tup
+
         self._ps = gloss.ParticleSystem(
             tex,
             onfinish = self._finished,
@@ -463,7 +457,7 @@ class Thruster(PSystem):
             initialparticles = 10,
             particlelifespan = 90,
             growth = .8,
-            wind = map(int, wind.tup),
+            wind = wind,
             minspeed = 1,
             maxspeed = 5,
             minscale = game.zoom * .05,
