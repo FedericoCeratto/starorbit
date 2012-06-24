@@ -39,9 +39,8 @@ class Vector(object):
     def __add__(self, other):
         if type(self) == type(other):
             return type(self)(self.x + other.x, self.y + other.y)
-        if isinstance(other, Rect):
-            return self + type(self)(other.topleft)
-        raise(TypeError("Incompatible Vector types"))
+        raise(TypeError("Incompatible Vector types: %s %s" % (repr(self),
+            repr(other))))
 
     def __sub__(self, other):
         return self + (other * -1)

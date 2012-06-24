@@ -64,6 +64,18 @@ class GVector(Vector):
         return "GVector {%.3f, %.3f}" % (self.x, self.y)
 
 
+class SVector(Vector):
+    """2D vector, as it appears on the screen
+    e.g. SVector(0, 0) is always the topleft corner of the screen
+    """
+    @property
+    def gvector(self):
+        """Equivalent GVector"""
+        pv = PVector(*self.tup) - game._screen_center + game.gcamera.pvector
+        gv = pv / game.zoom
+        return GVector(*gv.tup)
+
+
 def distance(a, b):
     """Calculate distance between two points (tuples)"""
     d = (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2
@@ -154,10 +166,70 @@ class BlackBackground(object):
             color = gloss.Color(0, 0, 0, 1),
         )
 
+
 class Background(Sprite):
     def __init__(self):
-        Sprite.__init__(self, 'space_dim.jpg', 1)
-        self.gcenter = GVector(0, 0)
+        Sprite.__init__(self, 'space_tileable.png', 1)
+
+    def update(self):
+        raise RuntimeError, "This must be used by Tiles"
+
+    def draw(self, gc):
+        """Draw on screen"""
+        self.move_to(*gc.on_screen.tup)
+        gloss.Sprite.draw(self, scale=self._raw_scale * game.zoom,
+            origin=None)
+
+
+class Tiles(object):
+    """Manage tiled sprites
+    """
+    # each title is located by a (x, y) tuple in self._tiles
+    # The central tile is at (0, 0)
+    def __init__(self):
+        self._tiles = {}
+        self._basetile = Background()
+
+    def _locate_tile(self, sv):
+        """Given a point (in pixels on screen), locate the tile that contains
+        it
+        """
+        gv = sv.gvector
+        tile_width = self._basetile.texture.width
+        tile_height = self._basetile.texture.height
+        x = int(gv.x / tile_width)
+        y = int(gv.y / tile_height)
+        return (x, y)
+
+    def _get_tile_center(self, x, y):
+        """Given tile x, y coords, find the tile center
+        """
+        tile_width = self._basetile.texture.width
+        tile_height = self._basetile.texture.height
+        return GVector(tile_width * x, tile_height * y)
+
+    def _find_displayed_tiles(self):
+        """Find tiles that are currently visible
+        """
+        s_topleft = SVector(0, 0)
+        s_bottomright = SVector(*game.resolution)
+        ti_topleft = self._locate_tile(s_topleft)
+        ti_bottomright = self._locate_tile(s_bottomright)
+
+        for x in xrange(ti_topleft[0], ti_bottomright[0] + 1):
+            for y in xrange(ti_topleft[1], ti_bottomright[1] + 1):
+                if (x, y) not in self._tiles:
+                    self._tiles[(x, y)] = self._get_tile_center(x, y)
+                    print ti_topleft, ti_bottomright, x,y, self._tiles[(x,y)]
+
+    def update(self):
+        self._find_displayed_tiles()
+
+    def draw(self):
+        """Draw displayed tiles"""
+        for gc in self._tiles.itervalues():
+            self._basetile.draw(gc)
+
 
 class BlackOverlay(object):
     """Black overlay used to fade to black"""
@@ -622,7 +694,7 @@ class Game(gloss.GlossGame):
     def _zoom_out(self):
         self._zoom_level += .2
         if pygame.KMOD_CTRL & pygame.key.get_mods():
-            self._zoom_level += .8
+            self._zoom_level += 5.8
 
     def _update_zoom(self):
         # I have no idea what i'm doing
@@ -689,8 +761,7 @@ class Game(gloss.GlossGame):
         self._font = gloss.SpriteFont(
             '/usr/share/fonts/truetype/freefont/FreeSans.ttf', 10)
 
-        self._below_background = BlackBackground()
-        self._background = Background()
+        self._background_tiles = Tiles()
         self.orbit = Orbit()
         self._suns = [Sun(gcenter=GVector(100, -100)), ]
         self._satellites = [Satellite() for x in xrange(10)]
@@ -725,12 +796,12 @@ class Game(gloss.GlossGame):
 
         k = min(1, self.zoom / 10)
         self.gcamera = self._ship.gcenter * k + self._suns[0].gcenter * (1 - k)
+        self._background_tiles.update()
 
         self._add_solar_debris()
         self.changed_scale = True
         layers = (
-            '_below_background',
-            '_background',
+            '_background_tiles',
             '_suns',
             '_satellites',
             '_particles',
@@ -741,6 +812,7 @@ class Game(gloss.GlossGame):
             '_bars'
         )
 
+        # update all layers
         for l in layers:
             items = getattr(self, l)
             if isinstance(items, list):
@@ -748,6 +820,7 @@ class Game(gloss.GlossGame):
             else:
                 items.update()
 
+        # draw all layers
         for l in layers:
             items = getattr(self, l)
             if isinstance(items, list):
@@ -755,6 +828,7 @@ class Game(gloss.GlossGame):
             else:
                 items.draw()
 
+        # draw dashboard text
         self._draw_bottom_right_text("%06.2f" % self._ship._angle, 50)
         self._draw_bottom_right_text("%06.2f" % self._ship.gspeed.angle_cw_degs, 100)
         self._draw_bottom_right_text("%06.2f" % self._ship.gspeed.modulo, 150)
