@@ -366,7 +366,7 @@ class Starship(Satellite):
         self._angular_velocity = degrees_per_sec(0)
         self._orbit_prediction_thread = None
         self._orbit_prediction_running = False
-        self._raw_scale = .0025
+        self._raw_scale = .025
         self._tp = None
         self.gcenter = gcenter
         self.gspeed = GVector(0, -0.3)
@@ -548,9 +548,9 @@ class RCSThruster(PSystem):
         self._tex = gloss.Texture("smoke.tga")
         self._ps = []
 
-        gdelta_front = GVector(game.zoom * .01, 0)
+        gdelta_front = GVector(game.zoom * .1, 0)
         gdelta_front.angle_cw_degs = degrees(180) - ship._angle
-        gdelta_rear = GVector(game.zoom * .01, 0)
+        gdelta_rear = GVector(game.zoom * .1, 0)
         gdelta_rear.angle_cw_degs = degrees(0) - ship._angle
 
         wind_front = PVector(game.zoom * 13, 0)
@@ -685,16 +685,24 @@ class Game(gloss.GlossGame):
         self._presolution = PVector(self.resolution)
 
     def _zoom_in(self):
-        self._zoom_level -= .2
+        """Zoom in"""
         if pygame.KMOD_CTRL & pygame.key.get_mods():
-            self._zoom_level -= .8
-        if self._zoom_level < .01:
-            self._zoom_level = .01
+            self._zoom_level -= 2
+        else:
+            self._zoom_level -= .4
+
+        if self._zoom_level < .1:
+            self._zoom_level = .1
 
     def _zoom_out(self):
-        self._zoom_level += .2
+        """Zoom out"""
+        if self._zoom_level > 40:
+            return
+
         if pygame.KMOD_CTRL & pygame.key.get_mods():
-            self._zoom_level += 5.8
+            self._zoom_level += 2
+        else:
+            self._zoom_level += .4
 
     def _update_zoom(self):
         # I have no idea what i'm doing
