@@ -220,7 +220,7 @@ class Tiles(object):
             for y in xrange(ti_topleft[1], ti_bottomright[1] + 1):
                 if (x, y) not in self._tiles:
                     self._tiles[(x, y)] = self._get_tile_center(x, y)
-                    print ti_topleft, ti_bottomright, x,y, self._tiles[(x,y)]
+                    #print ti_topleft, ti_bottomright, x,y, self._tiles[(x,y)]
 
     def update(self):
         self._find_displayed_tiles()
@@ -404,7 +404,7 @@ class Starship(Satellite):
         self.propellent -= 10
         thrust = GVector(.5, 0)
         thrust.angle_cw_degs = self._angle
-        print self._angle, repr(thrust), thrust.angle, thrust.angle_cw_degs
+        #print self._angle, repr(thrust), thrust.angle, thrust.angle_cw_degs
         self.gspeed += thrust
         self._start_orbit_prediction()
         t = Thruster(self.gcenter, thrust)
@@ -631,6 +631,130 @@ class HBar(Bar):
             width = 1, height = 5, color=self._color,
         )
 
+def animator(maximum, step=1):
+    """Increase a counter on each call and reset it every time it reaches a
+    maximum"""
+    cnt = 0
+    while True:
+        yield cnt
+        cnt = (cnt + step) % maximum
+
+
+class Menu(object):
+    """Hovering menu"""
+    def __init__(self, game):
+        self._game = game
+        resolution = PVector(game.resolution)
+        self._starting_position = resolution / 2
+        # Line spacing: a vertical vector, based on the resolution
+        self._line_spacing = PVector(0, resolution.y) / 20
+        # Font size based on resolution
+        self._fontsize = int(resolution.modulo / 40)
+        self._animate_glow = animator(math.pi * 2, .05)
+        self._options = {
+            'global menu': (
+                ('play game', '_play'),
+                ('exit', '_exit_game'),
+            ),
+            'in-game menu': (
+                ('back to game', '_back_to_game'),
+                ('exit', '_exit_game'),
+            )
+        }
+        self._selected_option = 0
+        self._text = """StarOrbit Menu\n\n\n"""
+        self.mode = 'global menu'
+
+    def _setup_font(self):
+        """Setup font. It must be done after Gloss has been initialized.."""
+        self._font = gloss.SpriteFont(
+            '/usr/share/fonts/truetype/freefont/FreeSans.ttf',
+            self._fontsize
+        )
+        #pygame.font.SysFont try this
+
+    def up(self):
+        """Move up one item"""
+        self._selected_option -= 1
+        self._selected_option %= len(self._options[self.mode])
+
+    def down(self):
+        """Move down one item"""
+        self._selected_option += 1
+        self._selected_option %= len(self._options[self.mode])
+
+    def enter(self):
+        """Handle Enter keypress"""
+        action = self._options[self.mode][self._selected_option][1]
+        method = getattr(self, action)
+        method()
+
+    def _play(self):
+        """Start game"""
+        self.mode = 'play'
+        #TODO: setup new level
+
+    def _back_to_game(self):
+        """Go back to game"""
+        self.mode = 'play'
+
+    def _center(self, line):
+        """ """
+        w = self._font.font.size(line)[0]
+        return PVector(w/2, 0)
+
+    def draw(self):
+        """Draw on screen"""
+        try:
+            self._font
+        except:
+            self._setup_font()
+
+        # Build menu text
+        text = self._text
+        for n, (t, fun) in enumerate(self._options[self.mode]):
+            if n == self._selected_option:
+                text += " [%s]\n" % t
+            else:
+                text += "  %s\n" % t
+
+        # Draw lines
+        anim = self._animate_glow.next()
+        for n, line in enumerate(text.split('\n')):
+            alpha_sin = math.sin(anim + .4 * n)
+            alpha = .6 + .2 * alpha_sin
+            p = self._starting_position + self._line_spacing * n
+            p -= self._center(line)
+            #print p
+            self._draw_line(line, p, alpha)
+
+
+    def _draw_line(self, text, p, alpha):
+        """Draw a menu line"""
+        self._font.draw(
+            text,
+            position = p,
+            color = gloss.Color(1, 1, 1, alpha),
+            letterspacing = 0,
+            linespacing = 0
+        )
+
+    def keypress(self, event):
+        """Handle keys pressed in Menu mode"""
+        if event.key == K_ESCAPE:
+            self._exit_game()
+        elif event.key == K_UP:
+            self.up()
+        elif event.key == K_DOWN:
+            self.down()
+        elif event.key == K_RETURN:
+            self.enter()
+
+    def _exit_game(self):
+            pygame.quit()
+            sys.exit()
+
+
 
 class Game(gloss.GlossGame):
     def __init__(self, fullscreen=False, resolution=None, display_fps=False):
@@ -657,6 +781,8 @@ class Game(gloss.GlossGame):
         self.on_mouse_down = self._mouse_click
         self.on_mouse_motion = lambda x: x
         self.on_key_down = self._keypress
+
+        self._menu = Menu(self)
 
 
     def _set_fullscreen(self):
@@ -741,6 +867,10 @@ class Game(gloss.GlossGame):
         #FIXME raise RuntimeError, "Unable to kill %s" % repr(victim)
 
     def _mouse_click(self, event):
+        """Handle mouse clicks and wheel movement during game"""
+        if not self._menu.mode == 'play':
+            return
+
         self.changed_scale = False
         if event.button == 4: # wheel up
             self._zoom_in()
@@ -750,11 +880,19 @@ class Game(gloss.GlossGame):
             self._rotate_ship()
 
     def _keypress(self, event):
-        if event.key == 27:
-            # quit on Esc key or window closing
-            pygame.quit()
-            sys.exit()
-        elif event.unicode == u' ':
+        """Handle keys pressed"""
+        if self._menu.mode == 'play':
+            self._in_game_keypress(event)
+        else:
+            self._menu.keypress(event)
+
+    def _in_game_keypress(self, event):
+        """Handle keys pressed during game"""
+        if event.key == K_ESCAPE:
+            # Go to in-game menu
+            self._menu.mode = 'in-game menu'
+
+        elif event.key == K_SPACE:
             self.soundplayer.play('thruster')
             self._impulse()
 
@@ -763,6 +901,7 @@ class Game(gloss.GlossGame):
             self.soundplayer.play('gear')
         elif event.unicode == u'b':
             self.soundplayer.play('beep')
+
 
     def load_content(self):
         """Load images, create game objects"""
@@ -846,6 +985,10 @@ class Game(gloss.GlossGame):
             fps = 1/gloss.Gloss.elapsed_seconds
             self._font.draw("%.2f" % fps, scale = 1,
                 color = gloss.Color.BLUE, letterspacing = 0, linespacing = -25)
+
+        # draw menu
+        if self._menu.mode in ('global menu', 'in-game menu'):
+            self._menu.draw()
 
     def _draw_bottom_right_text(self, text, y):
         """Draw gray metrics"""
