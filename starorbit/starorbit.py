@@ -108,35 +108,25 @@ class Orbit(object):
     """Starship orbit"""
     def __init__(self):
         self.gcenter = GVector(0, 0)
-        self._alpha = 0
-        self._fading = 'in' # 'in', 'out', None
         self._orbit = ()
         self._color = gloss.Color(1, 1, 1, .2)
+        self._alpha_animator = animator_directional(maxv=.2, step=.01)
+        self._alpha_animator.next()
 
     def fade_in(self, orbit):
         """Start fading in a new orbit"""
         self._orbit = [o[0] for o in orbit]
         self._fading = 'in'
+        self._alpha_animator.send('up')
 
     def fade_out(self):
         """Start fading out the orbit"""
-        self._fading = 'out'
+        self._alpha_animator.send('down')
 
     def update(self):
 
-        if self._fading == 'in':
-            self._alpha += .01
-            if self._alpha > .2:
-                self._alpha = .2
-                self._fading = None
-            self._color = gloss.Color(1, 1, 1, self._alpha)
-
-        elif self._fading == 'out':
-            self._alpha -= .01
-            if self._alpha < 0:
-                self._alpha = 0
-                self._fading = None
-            self._color = gloss.Color(1, 1, 1, self._alpha)
+        alpha = self._alpha_animator.next()
+        self._color = gloss.Color(1, 1, 1, alpha)
 
     def draw(self):
         """Draw orbit"""
@@ -444,11 +434,13 @@ class Starship(Satellite):
         # momentum should be degrees per (sec ** 2)
         momentum = degrees_per_sec(math.copysign(.1, signed_delta))
 
-        if av != 0 and math.sqrt(2 * abs(signed_delta) / .1) > 1.05 * abs(signed_delta / av):
+        if av != 0 and math.sqrt(2 * abs(signed_delta) / .1) > \
+            1.05 * abs(signed_delta / av):
             # closing too fast - better slow down
             self._angular_velocity -= momentum
             cw = momentum < 0
-        elif av == 0 or math.sqrt(2 * abs(signed_delta) / .1) < 0.95 * abs(signed_delta / av):
+        elif av == 0 or math.sqrt(2 * abs(signed_delta) / .1) < \
+            0.95 * abs(signed_delta / av):
             # increase speed
             self._angular_velocity += momentum
             cw = momentum > 0
@@ -639,31 +631,57 @@ def animator(maximum, step=1):
         yield cnt
         cnt = (cnt + step) % maximum
 
+def animator_directional(minv=0, maxv=1, startv=0, step=.1, direction='up'):
+    """Increase or decrease a counter on each call between a min and max
+    value"""
+    val = startv
+    while True:
+        if direction == 'up':
+            val += step
+            if val > maxv:
+                val = maxv
+                direction = 'stop'
+        elif direction == 'down':
+            val -= step
+            if val < minv:
+                val = minv
+                direction = 'stop'
+        newdir = (yield val)
+        if newdir in ('up', 'down', 'stop'):
+            direction = newdir
+
 
 class Menu(object):
     """Hovering menu"""
     def __init__(self, game):
         self._game = game
-        resolution = PVector(game.resolution)
-        self._starting_position = resolution / 2
+        self._starting_position = PVector(game.resolution.x / 2,
+        game.resolution.y / 4)
         # Line spacing: a vertical vector, based on the resolution
-        self._line_spacing = PVector(0, resolution.y) / 20
+        self._line_spacing = PVector(0, game.resolution.y) / 20
         # Font size based on resolution
-        self._fontsize = int(resolution.modulo / 40)
+        self._fontsize = int(game.resolution.modulo / 40)
         self._animate_glow = animator(math.pi * 2, .05)
         self._options = {
-            'global menu': (
+            'main menu': (
                 ('play game', '_play'),
+                ('help', '_help'),
                 ('exit', '_exit_game'),
             ),
             'in-game menu': (
                 ('back to game', '_back_to_game'),
                 ('exit', '_exit_game'),
-            )
+            ),
+            'help': (
+                ("Space - fire thruster\nRight click - Yaw control\n" +
+                "g - Toggle landing gears\nb - Beep\nMouse wheel - zoom\n" +
+                "Ctrl-mouse-wheel - faster zoom", None),
+                ('back', '_back_to_main_menu'),
+            ),
         }
         self._selected_option = 0
         self._text = """StarOrbit Menu\n\n\n"""
-        self.mode = 'global menu'
+        self.mode = 'main menu'
 
     def _setup_font(self):
         """Setup font. It must be done after Gloss has been initialized.."""
@@ -686,6 +704,8 @@ class Menu(object):
     def enter(self):
         """Handle Enter keypress"""
         action = self._options[self.mode][self._selected_option][1]
+        if action is None:
+            return
         method = getattr(self, action)
         method()
 
@@ -698,10 +718,23 @@ class Menu(object):
         """Go back to game"""
         self.mode = 'play'
 
+    def _back_to_main_menu(self):
+        """Go back to main menu"""
+        self.mode = 'main menu'
+
+    def _help(self):
+        """Show help menu"""
+        self.mode = 'help'
+
     def _center(self, line):
         """ """
         w = self._font.font.size(line)[0]
         return PVector(w/2, 0)
+
+    @property
+    def active(self):
+        """Return True if the Menu should be displayed"""
+        return not self.mode == 'play'
 
     def draw(self):
         """Draw on screen"""
@@ -712,8 +745,9 @@ class Menu(object):
 
         # Build menu text
         text = self._text
-        for n, (t, fun) in enumerate(self._options[self.mode]):
-            if n == self._selected_option:
+        for n, item in enumerate(self._options[self.mode]):
+            t = item[0] # Text
+            if n == self._selected_option and item[1]:
                 text += " [%s]\n" % t
             else:
                 text += "  %s\n" % t
@@ -987,7 +1021,7 @@ class Game(gloss.GlossGame):
                 color = gloss.Color.BLUE, letterspacing = 0, linespacing = -25)
 
         # draw menu
-        if self._menu.mode in ('global menu', 'in-game menu'):
+        if self._menu.active:
             self._menu.draw()
 
     def _draw_bottom_right_text(self, text, y):
