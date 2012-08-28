@@ -63,6 +63,33 @@ class GVector(Vector):
     def __repr__(self):
         return "GVector {%.3f, %.3f}" % (self.x, self.y)
 
+    def plot(self, start):
+        """Plot the vector on the screen, applied to a starting position"""
+        end = start + self
+        tip = end + self.orthonormal()
+        gloss.Gloss.draw_lines(
+            [start.on_screen, end.on_screen, tip.on_screen],
+            color=gloss.Color(0, 1, 1, .5),
+            width=1,
+            join=False
+        )
+
+    def plot_cross(self, size=5):
+        """Plot the vector on the screen"""
+        nodes = (
+            self,
+            self + GVector(size, 0),
+            self + GVector(-size, 0),
+            self,
+            self + GVector(0, size),
+            self + GVector(0, -size),
+        )
+        gloss.Gloss.draw_lines(
+            [n.on_screen for n in nodes],
+            color=gloss.Color(1, 1, 0, .1),
+            width=1,
+            join=False
+        )
 
 class SVector(Vector):
     """2D vector, as it appears on the screen
@@ -357,6 +384,7 @@ class Starship(Satellite):
         self._orbit_prediction_thread = None
         self._orbit_prediction_running = False
         self._raw_scale = .025
+        self._raw_scale = .015 # fixme
         self._tp = None
         self.gcenter = gcenter
         self.gspeed = GVector(0, -0.3)
@@ -424,7 +452,7 @@ class Starship(Satellite):
         if signed_delta > 180:
             signed_delta -= 360
 
-        if abs(signed_delta) < 1:
+        if abs(signed_delta) < .1:
             # rotation completed
             self._angular_velocity = degrees_per_sec(0)
             self._angle = self._target_angle
@@ -488,7 +516,7 @@ class Debris(PSystem):
         texture = pygame.Surface(size=(1,1))
         texture = gloss.Texture("art/red_dot.png")
         wind = gcenter - game._suns[0].gcenter
-        wind.modulo = 100
+        wind.modulo = 200
         self._ps = gloss.ParticleSystem(
             texture,
             onfinish = self._finished,
@@ -497,8 +525,8 @@ class Debris(PSystem):
             initialparticles = 1,
             particlelifespan = 275,
             wind = map(int, wind.tup),
-            minspeed = 10,
-            maxspeed = 20,
+            minspeed = 100,
+            maxspeed = 300,
             minscale = game.zoom * .1,
             maxscale = game.zoom * .1,
             startcolor = Color(1, 0, 0, 1),
@@ -538,15 +566,16 @@ class RCSThruster(PSystem):
     def __init__(self, ship, cw=True):
         self.gcenter = ship.gcenter
         self._tex = gloss.Texture("smoke.tga")
-        self._ps = []
+        self._ps = [] # Running particle systems
 
-        gdelta_front = GVector(game.zoom * .1, 0)
+        # Distance of the RCS thrusters from the ship center
+        gdelta_front = GVector(3.5, 0)
         gdelta_front.angle_cw_degs = degrees(180) - ship._angle
-        gdelta_rear = GVector(game.zoom * .1, 0)
+        gdelta_rear = GVector(4, 0)
         gdelta_rear.angle_cw_degs = degrees(0) - ship._angle
 
-        wind_front = PVector(game.zoom * 13, 0)
-        wind_rear = PVector(game.zoom * 13, 0)
+        wind_front = PVector(100, 0)
+        wind_rear = PVector(200, 0)
 
         if cw:
             wind_front.angle_cw_degs = degrees(270) - ship._angle
