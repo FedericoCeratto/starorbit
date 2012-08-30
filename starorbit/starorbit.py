@@ -168,6 +168,7 @@ class Orbit(object):
             join=False
         )
 
+
 class BlackBackground(object):
     """Black background, below the star backdrop"""
 
@@ -392,6 +393,7 @@ class Starship(Satellite):
         self.orbit = ()
         self.propellent = 1500
         self.hull_temperature = 0
+        self.landing_gears_deployed = False
         self._start_orbit_prediction()
 
     def _update_temperature(self):
@@ -478,6 +480,11 @@ class Starship(Satellite):
         self.yaw_rcs_status = 'YAW CW' if cw else 'YAW CCW'
         t = RCSThruster(self, cw=cw)
         game._particles.append(t)
+
+    def toggle_landing_gears(self):
+        """Deploy/retract landing gear"""
+        self.landing_gears_deployed ^= True
+        game.soundplayer.play('gear')
 
 
 class ShipReflex(Satellite):
@@ -1001,7 +1008,7 @@ class Game(gloss.GlossGame):
 
         #FIXME: remove test sounds
         elif event.unicode == u'g':
-            self.soundplayer.play('gear')
+            self._ship.toggle_landing_gears()
         elif event.unicode == u'b':
             self.soundplayer.play('beep')
 
@@ -1092,6 +1099,8 @@ class Game(gloss.GlossGame):
         self._draw_bottom_right_text("%06.2f" % self._ship.gspeed.angle_cw_degs, 100)
         self._draw_bottom_right_text("%06.2f" % self._ship.gspeed.modulo, 150)
         self._draw_bottom_right_text(self._ship.yaw_rcs_status, 220)
+        landing_gear = 'LG' if self._ship.landing_gears_deployed else ''
+        self._draw_bottom_right_text(landing_gear, 240)
 
         if self._display_fps:
             fps = 1/gloss.Gloss.elapsed_seconds
