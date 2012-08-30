@@ -480,6 +480,46 @@ class Starship(Satellite):
         game._particles.append(t)
 
 
+class ShipReflex(Satellite):
+    def __init__(self, ship, n, light_angle):
+        gloss.Sprite.__init__(self, gloss.Texture('art/shuttle_light_%s.png' % n))
+        self._ship = ship
+        self.gspeed = ship.gspeed
+        self.gcenter = ship.gcenter
+        self.mass = 4
+        self._raw_scale = .015 # fixme
+        self._alpha = 0
+        self._light_angle = degrees(light_angle)
+
+    def update(self):
+        self.gcenter = self._ship.gcenter
+        self._angle = self._ship._angle
+        self.gspeed = self._ship.gspeed
+        self._recenter()
+
+        mydir = GVector(1, 0)
+        mydir.angle = (self._light_angle - self._angle).radians
+
+        for sun in game._suns:
+            light = self.gcenter - sun.gcenter
+            dist = light.modulo
+            if dist > 0:
+                # scalar product
+                alpha = (mydir * light.normalized())
+                #alpha = (mydir * light.normalized()) / dist * 200
+                alpha = max(0, min(1, alpha))
+            else:
+                alpha = 1
+
+        self._alpha = alpha
+
+
+    def draw(self):
+        """Draw on screen"""
+        angle = getattr(self, '_angle', 0.0)
+        gloss.Sprite.draw(self, scale=self._raw_scale * game.zoom,
+            rotation=angle, origin=None, color=gloss.Color(1,1,1,self._alpha))
+
 class PSystem(object):
     """Wrapper for ParticleSystem"""
     def _finished(self, ps):
@@ -982,6 +1022,14 @@ class Game(gloss.GlossGame):
         self._particles = []
         self._ship = Starship(GVector(-100, 100))
         self._ship.place_in_orbit(self._suns[0])
+        self._ship_reflexes = [ShipReflex(self._ship, n, angle)
+            for n, angle in (
+                ('l', 90),
+                ('t', 0),
+                ('b', 180),
+                ('r', -90),
+            )
+        ]
 
         self._bars = [
             HBar(self._ship, 'propellent', .05, gloss.Color(0, 1, 0, .6), vmax=1500),
@@ -1018,6 +1066,7 @@ class Game(gloss.GlossGame):
             'orbit',
             '_circles',
             '_ship',
+            '_ship_reflexes',
             '_black_overlay',
             '_bars'
         )
