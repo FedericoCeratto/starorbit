@@ -894,6 +894,10 @@ class Game(gloss.GlossGame):
 
         self._menu = Menu(self)
 
+    def draw_loading_screen(self):
+        """Display an intro image while loading sprites"""
+        s = gloss.Sprite(gloss.Texture('art/loading.png'))
+        gloss.Sprite.draw(s, scale=self.resolution.x / 800.0)
 
     def _set_fullscreen(self):
         """Set fullscreen mode"""
