@@ -16,11 +16,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import gloss
 from gloss import Gloss, GlossGame
 from optparse import OptionParser
 from pygame.locals import *
+from time import time
 from threading import Thread
+import gloss
 import math
 import pygame
 import random
@@ -63,33 +64,6 @@ class GVector(Vector):
     def __repr__(self):
         return "GVector {%.3f, %.3f}" % (self.x, self.y)
 
-    def plot(self, start):
-        """Plot the vector on the screen, applied to a starting position"""
-        end = start + self
-        tip = end + self.orthonormal()
-        gloss.Gloss.draw_lines(
-            [start.on_screen, end.on_screen, tip.on_screen],
-            color=gloss.Color(0, 1, 1, .5),
-            width=1,
-            join=False
-        )
-
-    def plot_cross(self, size=5):
-        """Plot the vector on the screen"""
-        nodes = (
-            self,
-            self + GVector(size, 0),
-            self + GVector(-size, 0),
-            self,
-            self + GVector(0, size),
-            self + GVector(0, -size),
-        )
-        gloss.Gloss.draw_lines(
-            [n.on_screen for n in nodes],
-            color=gloss.Color(1, 1, 0, .1),
-            width=1,
-            join=False
-        )
 
 class SVector(Vector):
     """2D vector, as it appears on the screen
@@ -108,6 +82,71 @@ def distance(a, b):
     d = (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2
     return d ** (.5)
 
+
+class VectorDisplay(object):
+    """Display vectors for debugging"""
+    def __init__(self):
+        self._items = []
+
+    def show(self, start, end=None):
+        """Display a cross or a vector between two points"""
+        self._items.append((start, end, time()))
+
+    def draw(self):
+        """Draw items"""
+        if not self._items:
+            return
+
+        newitems = []
+        for start, end, tstamp in self._items:
+            if tstamp + 1 > time():
+                newitems.append((start, end, tstamp))
+                if end:
+                    self._plot_vector(start, end)
+                else:
+                    self._plot_cross(start)
+
+        self._items = newitems
+
+    def _plot_vector(self, start, end):
+        """Plot a vector on the screen, applied to a starting position"""
+        arrow = end - start
+        tip_r = arrow.orthonormal() - arrow.normalized()
+        tip_l = arrow.orthonormal() * -1  - arrow.normalized()
+        tip_r *= 10
+        tip_r += start
+        gloss.Gloss.draw_lines(
+            [start.on_screen, end.on_screen, tip_r.on_screen],
+            color=gloss.Color(0, 1, 1, .5),
+            width=1,
+            join=False
+        )
+
+    def _plot_cross(self, start):
+        """Plot a cross on the screen"""
+        nodes = (
+            start,
+            start + GVector(size, 0),
+            start + GVector(-size, 0),
+            start,
+            start + GVector(0, size),
+            start + GVector(0, -size),
+        )
+        gloss.Gloss.draw_lines(
+            [n.on_screen for n in nodes],
+            color=gloss.Color(1, 1, 0, .1),
+            width=1,
+            join=False
+        )
+
+
+class MutePlayer(object):
+    """Silent Sound Player, used to mute sound"""
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def play(self, *args, **kwargs):
+        pass
 
 
 class Sprite(gloss.Sprite):
@@ -429,6 +468,8 @@ class Starship(Satellite):
         self._start_orbit_prediction()
         t = Thruster(self.gcenter, thrust)
         game._particles.append(t)
+        #game.vdebugger.show(self.gcenter, self.gspeed)
+
 
     def _start_orbit_prediction(self):
         game.orbit.fade_out()
@@ -867,7 +908,8 @@ class Menu(object):
 
 
 class Game(gloss.GlossGame):
-    def __init__(self, fullscreen=False, resolution=None, display_fps=False):
+    def __init__(self, fullscreen=False, resolution=None, display_fps=False,
+        sound=True):
         """Initialize Game"""
         gloss.GlossGame.__init__(self, 'Satellife')
         pygame.init()
@@ -885,7 +927,10 @@ class Game(gloss.GlossGame):
         self.gcamera = GVector(0, 0)
 
         # load sounds
-        self.soundplayer = SoundPlayer()
+        if sound:
+            self.soundplayer = SoundPlayer()
+        else:
+            self.soundplayer = MutePlayer()
 
         # event handlers
         self.on_mouse_down = self._mouse_click
@@ -893,6 +938,7 @@ class Game(gloss.GlossGame):
         self.on_key_down = self._keypress
 
         self._menu = Menu(self)
+        self.vdebugger = VectorDisplay()
 
     def draw_loading_screen(self):
         """Display an intro image while loading sprites"""
@@ -1111,6 +1157,9 @@ class Game(gloss.GlossGame):
             self._font.draw("%.2f" % fps, scale = 1,
                 color = gloss.Color.BLUE, letterspacing = 0, linespacing = -25)
 
+        # draw debug items
+        self.vdebugger.draw()
+
         # draw menu
         if self._menu.active:
             self._menu.draw()
@@ -1132,6 +1181,8 @@ def parse_args():
         action="store_true", help="fullscreen", default=False)
     parser.add_option("-r", "--framerate", dest="framerate",
         action="store_true", help="display FPS", default=False)
+    parser.add_option("--no-sound", dest="sound",
+        action="store_false", help="Disable sound", default=True)
     parser.add_option("-x", "--x-resolution", dest="resolution",
         help="resolution", default=800)
 
@@ -1145,7 +1196,7 @@ def main():
     global game
     opts, args = parse_args()
     game = Game(fullscreen=opts.fullscreen, resolution=opts.resolution,
-        display_fps=opts.framerate)
+        display_fps=opts.framerate, sound=opts.sound)
     game.run()
 
 if __name__ == '__main__':
