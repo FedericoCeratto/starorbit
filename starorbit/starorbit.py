@@ -88,9 +88,11 @@ class VectorDisplay(object):
     def __init__(self):
         self._items = []
 
-    def show(self, start, end=None):
+    def show(self, start, end=None, vec=None):
         """Display a cross or a vector between two points"""
-        self._items.append((start, end, time()))
+        if end:
+            vec = end - start
+        self._items.append((start, vec, time()))
 
     def draw(self):
         """Draw items"""
@@ -99,31 +101,37 @@ class VectorDisplay(object):
 
         newitems = []
         for start, end, tstamp in self._items:
-            if tstamp + 1 > time():
+            tdelta = time() - tstamp
+            if tdelta <= 1:
+                alpha = (1 - tdelta)
                 newitems.append((start, end, tstamp))
                 if end:
-                    self._plot_vector(start, end)
+                    self._plot_vector(start, end, alpha)
                 else:
-                    self._plot_cross(start)
+                    self._plot_cross(start, alpha)
 
         self._items = newitems
 
-    def _plot_vector(self, start, end):
+    def _plot_vector(self, start, arrow, alpha=.5):
         """Plot a vector on the screen, applied to a starting position"""
-        arrow = end - start
+        arrow *= 100
+        end = start + arrow
         tip_r = arrow.orthonormal() - arrow.normalized()
         tip_l = arrow.orthonormal() * -1  - arrow.normalized()
-        tip_r *= 10
-        tip_r += start
+        tip_r += end
+        tip_l += end
+        e = end.on_screen
         gloss.Gloss.draw_lines(
-            [start.on_screen, end.on_screen, tip_r.on_screen],
-            color=gloss.Color(0, 1, 1, .5),
+            [start.on_screen, e, tip_r.on_screen, e, tip_l.on_screen],
+            color=gloss.Color(0, 1, 1, alpha),
             width=1,
             join=False
         )
 
-    def _plot_cross(self, start):
+
+    def _plot_cross(self, start, alpha=.1):
         """Plot a cross on the screen"""
+        size = 4
         nodes = (
             start,
             start + GVector(size, 0),
@@ -134,7 +142,7 @@ class VectorDisplay(object):
         )
         gloss.Gloss.draw_lines(
             [n.on_screen for n in nodes],
-            color=gloss.Color(1, 1, 0, .1),
+            color=gloss.Color(1, 1, 0, alpha),
             width=1,
             join=False
         )
@@ -461,14 +469,13 @@ class Starship(Satellite):
     def fire_thruster(self):
         """Fire thruster"""
         self.propellent -= 10
-        thrust = GVector(.5, 0)
-        thrust.angle_cw_degs = self._angle
-        #print self._angle, repr(thrust), thrust.angle, thrust.angle_cw_degs
+        thrust = GVector(.1, 0)
+        thrust.angle_cw_degs = degrees(180) - self._angle
         self.gspeed += thrust
         self._start_orbit_prediction()
         t = Thruster(self.gcenter, thrust)
         game._particles.append(t)
-        #game.vdebugger.show(self.gcenter, self.gspeed)
+        #game.vdebugger.show(self.gcenter, vec=thrust)
 
 
     def _start_orbit_prediction(self):
@@ -627,8 +634,8 @@ class Thruster(PSystem):
         self.gcenter = gcenter
         tex = gloss.Texture("smoke.tga")
 
-        wind = PVector(game.zoom * 38, 0)
-        wind.angle_cw_degs = thrust.angle_cw_degs
+        wind = PVector(game.zoom * 48, 0)
+        wind.angle_cw_degs = degrees(180) - thrust.angle_cw_degs
         wind = wind.round_tup
 
         self._ps = gloss.ParticleSystem(
@@ -636,12 +643,12 @@ class Thruster(PSystem):
             onfinish = self._finished,
             position = gcenter.on_screen.tup,
             name = "smoke",
-            initialparticles = 10,
-            particlelifespan = 90,
+            initialparticles = 20,
+            particlelifespan = 190,
             growth = .8,
             wind = wind,
-            minspeed = 1,
-            maxspeed = 5,
+            minspeed = .1,
+            maxspeed = 10,
             minscale = game.zoom * .05,
             maxscale = game.zoom * .1,
             startcolor = Color(1, 1, 1, 1),
